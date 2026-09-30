@@ -216,8 +216,8 @@ fetch_binary() {
   local name=$1 dest=$2 tmp
   [ -n "${BUILD:-}" ] && return 1
   tmp=$(mktemp -d)
-  if curl -fsL "$RELEASE_URL/$name-linux-aarch64" -o "$tmp/$name" &&
-     curl -fsL "$RELEASE_URL/$name-linux-aarch64.sha256" -o "$tmp/$name.sha256" &&
+  if fetch_asset "$name-linux-aarch64" "$tmp/$name" &&
+     fetch_asset "$name-linux-aarch64.sha256" "$tmp/$name.sha256" &&
      (cd "$tmp" && sed "s#  .*#  $name#" "$name.sha256" | sha256sum -c --quiet); then
     run install -m 755 "$tmp/$name" "$dest"
     info "$name: downloaded"
@@ -225,6 +225,18 @@ fetch_binary() {
   fi
   rm -rf "$tmp"
   warn "$name: no prebuilt download ($RELEASE_URL)"
+  return 1
+}
+
+# fetch_asset <name> <file>: one file from the latest release. A private repo
+# (while testing) needs a login: then it goes through gh, as the user running
+# sudo, who logged in with `gh auth login`.
+fetch_asset() {
+  curl -fsL "$RELEASE_URL/$1" -o "$2" && return 0
+  if [ -z "${HOMEAUDIO_RELEASE_URL:-}" ] && [ -n "${SUDO_USER:-}" ] && command -v gh >/dev/null; then
+    sudo -u "$SUDO_USER" gh release download --repo "${REPO_URL#https://github.com/}" \
+      --pattern "$1" --output - > "$2" 2>/dev/null && [ -s "$2" ] && return 0
+  fi
   return 1
 }
 

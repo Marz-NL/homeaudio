@@ -34,7 +34,7 @@ jobs:
           curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: playerui and player-guard-helper
         working-directory: webui

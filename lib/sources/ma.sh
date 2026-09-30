@@ -95,8 +95,8 @@ EOF
     sleep 5
     if ! systemctl is-active -q sendspin && dac_busy; then
       # PortAudio can't see a DAC that's in use, so sendspin can't start yet
-      warn "the DAC is in use (something is playing): sendspin starts by itself"
-      warn "once it's free - then run 'sudo ./install.sh add ma' to finish"
+      warn "the DAC is in use (something is playing): sendspin starts by itself once it's free"
+      [ -n "${MA_PLAYER:-}" ] || warn "then run 'sudo ./install.sh add ma' to finish"
       return 0
     elif ! systemctl is-active -q sendspin; then
       warn "sendspin doesn't start - its last words:"

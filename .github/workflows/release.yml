@@ -59,10 +59,11 @@ jobs:
           cd /tmp/pibuz
           cargo build --release --locked -p pibuz
 
-      - name: alsa_cdsp (ALSA plugin that feeds CamillaDSP, upstream commit, unchanged)
+      - name: alsa_cdsp (ALSA plugin that feeds CamillaDSP, upstream commit + patches/alsa-cdsp-homeaudio.patch)
         run: |
           git clone -q https://github.com/scripple/alsa_cdsp /tmp/alsa_cdsp
           git -C /tmp/alsa_cdsp checkout -q "$ALSA_CDSP_COMMIT"
+          git -C /tmp/alsa_cdsp apply "$GITHUB_WORKSPACE/patches/alsa-cdsp-homeaudio.patch"
           make -s -C /tmp/alsa_cdsp
 
       - name: Collect assets
@@ -75,6 +76,7 @@ jobs:
           cp /tmp/pibuz/LICENSE*                        dist/PIBUZ-LICENSE.txt
           cp /tmp/alsa_cdsp/libasound_module_pcm_cdsp.so dist/libasound_module_pcm_cdsp-linux-aarch64.so
           cp /tmp/alsa_cdsp/LICENSE                     dist/ALSA-CDSP-LICENSE.txt
+          cp patches/alsa-cdsp-homeaudio.patch          dist/
           cp patches/spotifyd-linear-volume.patch       dist/
           cp webui/THIRD-PARTY-LICENSES.txt             dist/
           cat > dist/SPOTIFYD-SOURCE.md <<EOF

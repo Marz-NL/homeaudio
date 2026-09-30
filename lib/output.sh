@@ -18,6 +18,8 @@ OUT_RUN=/run/homeaudio-cdsp                 # the stream's format and CamillaDSP
 OUT_GEN=/usr/local/lib/homeaudio/cdsp-config
 CAMILLADSP_VERSION=v4.1.3
 ALSA_CDSP_COMMIT=1a1b0a3e452f87372881ffaa9391a11d0ff6d541   # github.com/scripple/alsa_cdsp
+ALSA_CDSP_BUILD="$ALSA_CDSP_COMMIT+homeaudio1"   # + patches/alsa-cdsp-homeaudio.patch
+ALSA_CDSP_STAMP=/usr/local/lib/homeaudio/alsa-cdsp.build
 ALSA_CDSP_SO=/usr/lib/$(uname -m)-linux-gnu/alsa-lib/libasound_module_pcm_cdsp.so
 
 out_cdsp()  { [ "${OUTPUT_ENGINE:-direct}" = camilladsp ]; }
@@ -94,7 +96,7 @@ out_install_camilladsp() {
     rm -rf "$tmp"
     info "CamillaDSP $CAMILLADSP_VERSION installed"
   fi
-  [ -f "$ALSA_CDSP_SO" ] && return 0
+  [ -f "$ALSA_CDSP_SO" ] && [ "$(cat "$ALSA_CDSP_STAMP" 2>/dev/null)" = "$ALSA_CDSP_BUILD" ] && return 0
   tmp=$(mktemp -d)
   if fetch_asset "libasound_module_pcm_cdsp-linux-$(uname -m).so" "$tmp/cdsp.so"; then
     run install -D -m 644 "$tmp/cdsp.so" "$ALSA_CDSP_SO"
@@ -104,10 +106,13 @@ out_install_camilladsp() {
     apt_install build-essential libasound2-dev git
     run git clone -q https://github.com/scripple/alsa_cdsp "$tmp/src"
     run git -C "$tmp/src" checkout -q "$ALSA_CDSP_COMMIT"
+    run git -C "$tmp/src" apply "$HOMEAUDIO/patches/alsa-cdsp-homeaudio.patch"
     run make -s -C "$tmp/src"
     run install -D -m 644 "$tmp/src/libasound_module_pcm_cdsp.so" "$ALSA_CDSP_SO"
   fi
   rm -rf "$tmp"
+  run mkdir -p "$(dirname "$ALSA_CDSP_STAMP")"
+  echo "$ALSA_CDSP_BUILD" | write_file "$ALSA_CDSP_STAMP"
 }
 
 # The CamillaDSP config, written per stream by the plugin (as the source's
@@ -146,14 +151,23 @@ else
   out=$target convert=1
 fi
 DAC=$(sed -n 's/^USB_CARD=//p' /etc/homeaudio/cdsp-dac)
-# A new stream right after the last one (a seek, the next track): the plugin
-# starts a new CamillaDSP while the previous one may still be letting go of
-# the DAC - it would find it busy and stop. Give that one a moment (~2 s);
-# a DAC another source holds is player-guard's business, not waited for longer.
+# A new stream while this source's previous one still holds the DAC (a seek,
+# the next track - sendspin opens the new stream before its old one is
+# closed): the new CamillaDSP would find the DAC busy and stop. A source plays
+# one stream at a time, so its older CamillaDSP is obsolete: give it a moment
+# to let go, then stop it. Another source's CamillaDSP is left alone (that's
+# player-guard's business). The plugin runs this as: source > fork (the new
+# CamillaDSP to be) > sh > this script.
 if [ -z "$reload" ]; then
+  me=$(ps -o ppid= -p "$PPID" 2>/dev/null | tr -d ' ')
+  source=$(ps -o ppid= -p "${me:-0}" 2>/dev/null | tr -d ' ')
   i=0
-  while [ $i -lt 20 ] && pgrep -x camilladsp >/dev/null &&
-        ! grep -q closed "/proc/asound/$DAC/pcm0p/sub0/status" 2>/dev/null; do
+  while [ $i -lt 30 ] && ! grep -q closed "/proc/asound/$DAC/pcm0p/sub0/status" 2>/dev/null; do
+    old=$(ps -eo pid=,ppid=,stat=,comm= | awk -v s="${source:-0}" -v m="${me:-0}" \
+      '$4 == "camilladsp" && $2 == s && $1 != m && $3 !~ /Z/ {print $1}')
+    [ -n "$old" ] || break                 # someone else's: not ours to wait for
+    [ $i -eq 3 ] && kill $old 2>/dev/null  # 0.3 s grace, then stop it
+    [ $i -eq 15 ] && kill -9 $old 2>/dev/null
     sleep 0.1; i=$((i + 1))
   done
 fi
@@ -213,7 +227,8 @@ out_set_rate() {
   if out_cdsp && [ "$rate" != direct ]; then
     conf_set OUTPUT_RATE "$rate"
     echo "$rate" | write_file "$OUT_TARGET"
-    out_write_generator       # this version's, in case the repo was updated
+    out_install_camilladsp    # this version's plugin and generator,
+    out_write_generator       # in case the repo was updated
     run "$OUT_GEN" --reload
     room_manifest
     say "Output: $(out_label) (switched live)"

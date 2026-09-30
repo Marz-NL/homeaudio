@@ -20,7 +20,7 @@ room_main() {
     "src_${src}_questions"
   done
   room_base
-  out_write_alsa_conf       # the fixed-rate device, or none for bit-perfect
+  out_write_alsa_conf       # CamillaDSP, or nothing: sources straight on the DAC
   room_guard
   room_webui
   room_nowplaying
@@ -68,6 +68,13 @@ room_questions() {
 
   room_pick_dac
   room_pick_mixer
+
+  say "Output"
+  info "Bit-perfect by default: every source straight on the DAC, at the music's own rate."
+  info "A studio (a DAC into an audio interface at a fixed 44.1 or 48 kHz) wants a"
+  info "sample-rate converter: CamillaDSP, switched live in the web page."
+  ask_yesno WANT_CAMILLADSP "Sample-rate converter (CamillaDSP)" n
+  if [ "$WANT_CAMILLADSP" = y ]; then conf_set OUTPUT_ENGINE camilladsp; else conf_set OUTPUT_ENGINE direct; conf_set OUTPUT_RATE native; fi
 
   say "Sources - which apps can play in this room?"
   ask_yesno WANT_QOBUZ   "Qobuz Connect (Qobuz app)" y
@@ -317,9 +324,11 @@ add_airplay2 = "$HOMEAUDIO/pi/jobs/add-airplay.sh"
 add_ma = "$HOMEAUDIO/pi/jobs/add-ma.sh"
 set_rate = "$HOMEAUDIO/pi/jobs/set-rate.sh"
 
-# Output: "native" = bit-perfect, or a fixed rate every source is converted to
+# Output: "native" = bit-perfect, or a fixed rate every source is converted to.
+# engine "camilladsp" switches live; "direct" = sources straight on the DAC
 [output]
 rate = "${OUTPUT_RATE:-native}"
+engine = "${OUTPUT_ENGINE:-direct}"
 EOF
     if [ -n "${MIXER_CONTROL:-}" ]; then
       cat <<EOF

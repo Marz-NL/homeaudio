@@ -1,18 +1,31 @@
-# Output rate: bit-perfect (every source straight on the DAC, at the music's
-# own rate) or one fixed rate for everything - for a DAC feeding gear that
-# runs at a fixed clock, like an audio interface's S/PDIF input in a studio.
-# Fixed: an ALSA device "homeaudio" converts with libsamplerate at its best
-# quality, and every source plays through it. Sourced, not run.
+# Output rate. Two ways out of a room:
+#   direct      every source straight on the DAC, at the music's own rate
+#               (bit-perfect, the default)
+#   camilladsp  every source plays into CamillaDSP, which feeds the DAC: at
+#               the music's own rate (bit-perfect, passed through untouched)
+#               or converted to one fixed rate - for a DAC feeding gear that
+#               runs at a fixed clock, like an audio interface's S/PDIF input
+#               in a studio. Switching between those is live: CamillaDSP
+#               reloads, nothing restarts, the music keeps playing.
+# The first fixed rate moves a room to camilladsp (the sources restart once);
+# `install.sh rate direct` moves it back. Sourced, not run.
 
-OUT_PCM=homeaudio
+OUT_PCM=homeaudio                          # the ALSA device the sources play on
 OUT_CONF=/etc/alsa/conf.d/60-homeaudio.conf
-OUT_RATES="native 44100 48000"
+OUT_RATES="native 44100 48000 direct"
+OUT_TARGET=/etc/homeaudio/output-rate       # native | 44100 | 48000, read per stream
+OUT_RUN=/run/homeaudio-cdsp                 # the stream's format and CamillaDSP's config
+OUT_GEN=/usr/local/lib/homeaudio/cdsp-config
+CAMILLADSP_VERSION=v4.1.3
+ALSA_CDSP_COMMIT=1a1b0a3e452f87372881ffaa9391a11d0ff6d541   # github.com/scripple/alsa_cdsp
+ALSA_CDSP_SO=/usr/lib/$(uname -m)-linux-gnu/alsa-lib/libasound_module_pcm_cdsp.so
 
+out_cdsp()  { [ "${OUTPUT_ENGINE:-direct}" = camilladsp ]; }
 out_fixed() { [ "${OUTPUT_RATE:-native}" != native ]; }
 
 # The ALSA device the sources play on
 out_device() {
-  if out_fixed; then echo "$OUT_PCM"; else echo "hw:CARD=$DAC_CARD,DEV=0"; fi
+  if out_cdsp; then echo "$OUT_PCM"; else echo "hw:CARD=$DAC_CARD,DEV=0"; fi
 }
 
 # In words, for messages and the web page
@@ -25,46 +38,189 @@ out_label() {
   esac
 }
 
-# Write (fixed) or remove (bit-perfect) the converting ALSA device
+# Install CamillaDSP and the ALSA plugin that starts it per stream, and write
+# the "homeaudio" device (camilladsp), or remove it all from ALSA (direct)
 out_write_alsa_conf() {
-  if ! out_fixed; then
+  if ! out_cdsp; then
     [ -e "$OUT_CONF" ] && run rm -f "$OUT_CONF"
     return 0
   fi
-  apt_install libasound2-plugins   # the libsamplerate converter for ALSA
+  out_install_camilladsp
+  run mkdir -p "$(dirname "$OUT_TARGET")"
+  echo "${OUTPUT_RATE:-native}" | write_file "$OUT_TARGET"
+  run chmod 644 "$OUT_TARGET"
+  # Every source user writes here (they're all in the audio group)
+  echo "d $OUT_RUN 2775 root audio -" | write_file /etc/tmpfiles.d/homeaudio-cdsp.conf
+  run systemd-tmpfiles --create /etc/tmpfiles.d/homeaudio-cdsp.conf
+  out_write_generator
   write_file "$OUT_CONF" <<EOF
-# Written by homeaudio's install.sh: every source plays through this at a
-# fixed rate ($(out_label)). Switch in the web page, or: install.sh rate native
+# Written by homeaudio's install.sh: every source plays into CamillaDSP, which
+# feeds the DAC. The rate is in $OUT_TARGET; switch in the web page,
+# or: install.sh rate <native|44100|48000>. Back to direct: install.sh rate direct
+pcm.${OUT_PCM}_cdsp {
+    type cdsp
+    cpath "/usr/local/bin/camilladsp"
+    config_cmd "$OUT_GEN"
+    config_out "$OUT_RUN/config.yml"
+    channels 2
+    rates = [ 44100 48000 88200 96000 176400 192000 352800 384000 ]
+    cargs [ -o "$OUT_RUN/camilladsp.log" ]
+}
+# The name the sources use. A pass-through, only so it can carry a hint:
+# PortAudio (Music Assistant's sendspin) lists devices by their hint, and the
+# cdsp plugin itself refuses one.
 pcm.$OUT_PCM {
-    type plug
-    slave {
-        pcm "hw:CARD=$DAC_CARD,DEV=0"
-        rate $OUTPUT_RATE
-    }
-    rate_converter "samplerate_best"
+    type asym
+    playback.pcm "${OUT_PCM}_cdsp"
     hint {
         show on
-        description "homeaudio: $(out_label) on $DAC_CARD"
+        description "homeaudio: CamillaDSP on $DAC_CARD"
     }
 }
 EOF
 }
 
-# `install.sh rate <native|44100|48000>`: switch, and move the installed
-# sources over. They all restart: spotifyd and sendspin reconnect by
-# themselves; Qobuz (pibuz) and AirPlay have to be picked again in their app.
+out_install_camilladsp() {
+  local arch tmp
+  if [ "$(/usr/local/bin/camilladsp --version 2>/dev/null | awk '{print "v"$2}')" != "$CAMILLADSP_VERSION" ]; then
+    arch=$(uname -m)
+    case "$arch" in aarch64|x86_64) ;; *) die "CamillaDSP: no download for $arch (a 64-bit OS is needed)" ;; esac
+    tmp=$(mktemp -d)
+    run curl -fsSL -o "$tmp/cdsp.tgz" \
+      "https://github.com/HEnquist/camilladsp/releases/download/$CAMILLADSP_VERSION/camilladsp-linux-$arch.tar.gz" \
+      || die "CamillaDSP: download failed"
+    run tar -xzf "$tmp/cdsp.tgz" -C "$tmp"
+    run install -m 755 "$tmp/camilladsp" /usr/local/bin/camilladsp
+    rm -rf "$tmp"
+    info "CamillaDSP $CAMILLADSP_VERSION installed"
+  fi
+  [ -f "$ALSA_CDSP_SO" ] && return 0
+  tmp=$(mktemp -d)
+  if fetch_asset "libasound_module_pcm_cdsp-linux-$(uname -m).so" "$tmp/cdsp.so"; then
+    run install -D -m 644 "$tmp/cdsp.so" "$ALSA_CDSP_SO"
+    info "ALSA CamillaDSP plugin: downloaded"
+  else
+    info "ALSA CamillaDSP plugin: building (a minute)"
+    apt_install build-essential libasound2-dev git
+    run git clone -q https://github.com/scripple/alsa_cdsp "$tmp/src"
+    run git -C "$tmp/src" checkout -q "$ALSA_CDSP_COMMIT"
+    run make -s -C "$tmp/src"
+    run install -D -m 644 "$tmp/src/libasound_module_pcm_cdsp.so" "$ALSA_CDSP_SO"
+  fi
+  rm -rf "$tmp"
+}
+
+# The CamillaDSP config, written per stream by the plugin (as the source's
+# user), and again by `--reload` for a live switch
+out_write_generator() {
+  run mkdir -p "$(dirname "$OUT_GEN")"
+  write_file "$OUT_GEN" <<'GEN'
+#!/bin/sh
+# homeaudio: writes CamillaDSP's config for one stream.
+#   cdsp-config <format> <rate> <channels>   called by the ALSA plugin per stream
+#   cdsp-config --reload                     rate changed: rewrite, CamillaDSP reloads live
+umask 002
+RUN=/run/homeaudio-cdsp
+if [ "$1" = --reload ]; then
+  reload=1
+  [ -f $RUN/stream ] || exit 0          # nothing played yet
+  set -- $(cat $RUN/stream)
+else
+  reload=
+  echo "$1 $2 $3" > $RUN/stream
+fi
+# The plugin's format names -> CamillaDSP's
+case "$1" in
+  S16LE) fmt=S16_LE ;; S24LE) fmt=S24_4_RJ_LE ;; S24LE3) fmt=S24_3_LE ;;
+  S32LE) fmt=S32_LE ;; FLOAT32LE) fmt=F32_LE ;; FLOAT64LE) fmt=F64_LE ;; *) fmt=$1 ;;
+esac
+target=$(cat /etc/homeaudio/output-rate 2>/dev/null || echo native)
+if [ "$target" = native ] || [ "$target" = "$2" ]; then
+  # bit-perfect: the stream's own rate, samples passed through untouched
+  out=$2 convert=
+else
+  # converted; 1 dB headroom, as resampling can overshoot near full scale
+  out=$target convert=1
+fi
+DAC=$(sed -n 's/^USB_CARD=//p' /etc/homeaudio/cdsp-dac)
+{
+  cat <<EOF
+devices:
+  samplerate: $out
+  chunksize: 1024
+  queuelimit: 1
+  capture_samplerate: $2
+EOF
+  [ -n "$convert" ] && cat <<EOF
+  resampler:
+    type: Synchronous
+EOF
+  cat <<EOF
+  capture:
+    type: Stdin
+    channels: $3
+    format: $fmt
+  playback:
+    type: Alsa
+    channels: $3
+    device: "hw:CARD=$DAC,DEV=0"
+EOF
+  [ -n "$convert" ] && cat <<EOF
+filters:
+  headroom:
+    type: Gain
+    parameters:
+      gain: -1.0
+pipeline:
+  - type: Filter
+    channels: [0, 1]
+    names: [headroom]
+EOF
+} > $RUN/config.yml.new && mv -f $RUN/config.yml.new $RUN/config.yml
+[ -n "$reload" ] && pkill -HUP -x camilladsp
+exit 0
+GEN
+  run chmod 755 "$OUT_GEN"
+  # the DAC, readable by every source user (player-guard.env is not)
+  echo "USB_CARD=$DAC_CARD" | write_file /etc/homeaudio/cdsp-dac
+  run chmod 644 /etc/homeaudio/cdsp-dac
+}
+
+# `install.sh rate <native|44100|48000|direct>`
 out_set_rate() {
   local rate=$1 src
   need_root rate "$rate"
   case " $OUT_RATES " in *" $rate "*) ;; *) die "rate must be one of: $OUT_RATES" ;; esac
   [ -n "${DAC_CARD:-}" ] || die "no room set up yet - run: sudo ./install.sh room"
-  # What was playing, to pick it up again afterwards
+
+  # Already on CamillaDSP: live, nothing restarts
+  if out_cdsp && [ "$rate" != direct ]; then
+    conf_set OUTPUT_RATE "$rate"
+    echo "$rate" | write_file "$OUT_TARGET"
+    run "$OUT_GEN" --reload
+    room_manifest
+    say "Output: $(out_label) (switched live)"
+    return 0
+  fi
+  # direct -> direct: nothing to do
+  if ! out_cdsp && { [ "$rate" = direct ] || [ "$rate" = native ]; }; then
+    conf_set OUTPUT_RATE native
+    say "Output: bit-perfect, straight on the DAC (already)"
+    return 0
+  fi
+
+  # Moving between direct and CamillaDSP: every source reopens the DAC once
   local playing=""
   if grep -q RUNNING "/proc/asound/$DAC_CARD/pcm0p/sub0/status" 2>/dev/null; then
     playing=$(cat /run/player-guard/audio-owner 2>/dev/null || true)
   fi
-  conf_set OUTPUT_RATE "$rate"
-  say "Output: $(out_label)"
+  if [ "$rate" = direct ]; then
+    conf_set OUTPUT_ENGINE direct; conf_set OUTPUT_RATE native; conf_set WANT_CAMILLADSP n
+    say "Output: bit-perfect, straight on the DAC (CamillaDSP off)"
+  else
+    conf_set OUTPUT_ENGINE camilladsp; conf_set OUTPUT_RATE "$rate"; conf_set WANT_CAMILLADSP y
+    say "Output: $(out_label), through CamillaDSP - from now on switching is live"
+  fi
   out_write_alsa_conf
   for src in qobuz spotify airplay ma; do
     local want=WANT_${src^^}
@@ -74,16 +230,15 @@ out_set_rate() {
   done
   room_manifest
   run systemctl restart player-guard
-  info "all sources now play $(out_label)"
+  info "all sources moved over (they restarted once)"
   [ -n "$playing" ] && [ -z "$DRY_RUN" ] && out_resume "$playing"
   return 0
 }
 
-# Ask the source that was playing before a switch to continue. Waits for it
+# Ask the source that was playing before a move to continue. Waits for it
 # to be back (a restarted one reconnects first), gives up quietly after ~20 s.
 out_resume() {
   local src=$1 i
-  local user; user=$(sed -n 's/^PIBUZ_USER=//p' /etc/player-guard.env 2>/dev/null)
   case "$src" in
     qobuz)
       info "Qobuz: pick \"${ROOM_NAME:-this room}\" in the Qobuz app again to continue" ;;

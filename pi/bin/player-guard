@@ -30,6 +30,10 @@ dac_holder() {
   local pid comm
   pid=$(fuser "$PCM" 2>/dev/null | awk '{gsub(/[^0-9]/, "", $1); print $1}')
   comm=$(cat /proc/$pid/comm 2>/dev/null)
+  # Output rate through CamillaDSP: the plugin runs it as a child of the source
+  if [ "$comm" = camilladsp ]; then
+    pid=$(awk '{print $4}' /proc/$pid/stat 2>/dev/null); comm=$(cat /proc/$pid/comm 2>/dev/null)
+  fi
   case "$comm" in
     pibuz*)      echo qobuz ;;
     spotifyd*)   echo spotify ;;

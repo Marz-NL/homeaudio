@@ -510,11 +510,13 @@ function pollGuardLog(base, panel) {
 }
 
 // Output: bit-perfect, or one fixed rate for everything (for gear locked to
-// a rate, like a DAW's S/PDIF input). Switching runs install.sh rate as a job.
+// a rate, like a DAW's S/PDIF input). Switching runs install.sh rate as a job:
+// live through CamillaDSP; the first fixed rate moves the room onto it.
 const RATE_CHOICES = [["native", "Bit-perfect"], ["44100", "44.1 kHz"], ["48000", "48 kHz"]];
 
 function renderOutputCard(base, data) {
   const current = data.output.rate;
+  const live = data.output.engine === "camilladsp";
   const group = document.createElement("div");
   group.className = "seg";
   const card = serviceRow("Output", [group]);
@@ -522,7 +524,7 @@ function renderOutputCard(base, data) {
   note.className = "hint";
   note.textContent = current === "native"
     ? "Each track at its own rate, untouched."
-    : "Everything converted to one rate (best quality). Match it to your DAW session.";
+    : "Everything converted to one rate by CamillaDSP. Match it to your DAW session.";
   card.append(note);
 
   for (const [rate, label] of RATE_CHOICES) {
@@ -533,7 +535,9 @@ function renderOutputCard(base, data) {
     btn.addEventListener("click", async () => {
       group.querySelectorAll("button").forEach((b) => (b.disabled = true));
       autoRefreshSuspended = true;
-      note.textContent = "Switching - every source restarts briefly. Qobuz and AirPlay: pick this room in their app again afterwards.";
+      note.textContent = live
+        ? "Switching live - the music keeps playing."
+        : "First switch: CamillaDSP is set up and every source restarts once (Qobuz and AirPlay: pick this room again). After that, switching is live.";
       try {
         await fetchJSON(`${base}/jobs/set-rate`, { method: "POST", body: JSON.stringify({ RATE: rate }) });
       } catch (e) {

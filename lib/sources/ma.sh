@@ -113,7 +113,7 @@ EOF
 ma_write_unit() {
   local device hwvol=""
   device=$(ma_sendspin_device)
-  [ -n "${MIXER_CONTROL:-}" ] && ! out_fixed && hwvol=" --hardware-volume true"
+  [ -n "${MIXER_CONTROL:-}" ] && ! out_cdsp && hwvol=" --hardware-volume true"
   write_file /etc/systemd/system/sendspin.service <<EOF
 [Unit]
 Description=Music Assistant player ($ROOM_NAME, sendspin)
@@ -150,7 +150,7 @@ src_ma_output() {
 # hw:CARD=... names pass its startup check but fail once a stream starts.)
 ma_sendspin_device() {
   local name
-  out_fixed && { echo "$OUT_PCM"; return 0; }   # PortAudio lists it by that name
+  out_cdsp && { echo "$OUT_PCM"; return 0; }   # PortAudio lists it by its hint
   name=$(dac_list | awk -F'|' -v c="$DAC_CARD" '$1 == c { sub(/^.* - /, "", $2); print $2 }')
   echo "${name:-$DAC_CARD}"
 }

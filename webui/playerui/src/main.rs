@@ -37,16 +37,24 @@ struct JobPaths {
 struct OutputConfig {
     #[serde(default = "native")]
     rate: String,
+    #[serde(default = "direct")]
+    engine: String,
 }
 
 fn native() -> String {
     "native".to_string()
 }
 
+fn direct() -> String {
+    "direct".to_string()
+}
+
 #[derive(Debug, Serialize)]
 struct OutputStatus {
     /// "native" (bit-perfect), "44100" or "48000"
     rate: String,
+    /// "camilladsp" (switches live) or "direct" (sources straight on the DAC)
+    engine: String,
     /// the manifest has a set_rate job, so the page can switch it
     can_set: bool,
 }
@@ -307,6 +315,7 @@ fn build_status(manifest: &Manifest, found: &FoundRooms) -> StatusResponse {
         rooms,
         output: OutputStatus {
             rate: manifest.output.as_ref().map(|o| o.rate.clone()).unwrap_or_else(native),
+            engine: manifest.output.as_ref().map(|o| o.engine.clone()).unwrap_or_else(direct),
             can_set: manifest.jobs.set_rate.is_some(),
         },
     }

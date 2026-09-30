@@ -21,6 +21,7 @@ permissions:
 env:
   SPOTIFYD_VERSION: v0.4.2   # keep in sync with lib/sources/spotify.sh
   PIBUZ_VERSION: v2.5.1      # keep in sync with lib/sources/qobuz.sh (pibuz publishes no binaries)
+  ALSA_CDSP_COMMIT: 1a1b0a3e452f87372881ffaa9391a11d0ff6d541   # keep in sync with lib/output.sh
 
 jobs:
   build:
@@ -58,6 +59,12 @@ jobs:
           cd /tmp/pibuz
           cargo build --release --locked -p pibuz
 
+      - name: alsa_cdsp (ALSA plugin that feeds CamillaDSP, upstream commit, unchanged)
+        run: |
+          git clone -q https://github.com/scripple/alsa_cdsp /tmp/alsa_cdsp
+          git -C /tmp/alsa_cdsp checkout -q "$ALSA_CDSP_COMMIT"
+          make -s -C /tmp/alsa_cdsp
+
       - name: Collect assets
         run: |
           mkdir dist
@@ -66,6 +73,8 @@ jobs:
           cp /tmp/spotifyd/target/release/spotifyd      dist/spotifyd-linux-aarch64
           cp /tmp/pibuz/target/release/pibuz            dist/pibuz-linux-aarch64
           cp /tmp/pibuz/LICENSE*                        dist/PIBUZ-LICENSE.txt
+          cp /tmp/alsa_cdsp/libasound_module_pcm_cdsp.so dist/libasound_module_pcm_cdsp-linux-aarch64.so
+          cp /tmp/alsa_cdsp/LICENSE                     dist/ALSA-CDSP-LICENSE.txt
           cp patches/spotifyd-linear-volume.patch       dist/
           cp webui/THIRD-PARTY-LICENSES.txt             dist/
           cat > dist/SPOTIFYD-SOURCE.md <<EOF

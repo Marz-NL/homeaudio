@@ -31,13 +31,22 @@ doctor_room() {
     bad "DAC $card is missing" "check the cable/HAT, then reboot; cards now: $(dac_list | cut -d'|' -f1 | tr '\n' ' ')"
   fi
 
-  local rate
+  local rate engine
   rate=$(sed -n 's/^rate = "\(.*\)"/\1/p' /etc/player-guard-services.toml)
+  engine=$(sed -n 's/^engine = "\(.*\)"/\1/p' /etc/player-guard-services.toml)
   OUTPUT_RATE=${rate:-native}
-  if out_fixed && [ ! -f "$OUT_CONF" ]; then
-    bad "output is set to $(out_label), but $OUT_CONF is missing" "sudo ./install.sh rate ${rate}"
+  OUTPUT_ENGINE=${engine:-direct}
+  if ! out_cdsp; then
+    if out_fixed; then bad "output is set to $(out_label) without CamillaDSP" "sudo ./install.sh rate ${rate}"
+    else ok "output: bit-perfect, straight on the DAC"; fi
+  elif [ ! -f "$OUT_CONF" ] || [ ! -x /usr/local/bin/camilladsp ] || [ ! -f "$ALSA_CDSP_SO" ] || [ ! -x "$OUT_GEN" ]; then
+    bad "output goes through CamillaDSP, but part of it is missing" "sudo ./install.sh rate direct && sudo ./install.sh rate ${rate}"
+  elif [ "$(cat "$OUT_TARGET" 2>/dev/null)" != "$OUTPUT_RATE" ]; then
+    bad "CamillaDSP is set to $(cat "$OUT_TARGET" 2>/dev/null), the web page says $(out_label)" "sudo ./install.sh rate ${rate}"
   else
-    ok "output: $(out_label)"
+    ok "output: $(out_label), through CamillaDSP ($(/usr/local/bin/camilladsp --version 2>/dev/null | awk '{print $2}'))"
+    grep -q ERROR "$OUT_RUN/camilladsp.log" 2>/dev/null &&
+      note "CamillaDSP's last stream logged an error: $(grep ERROR "$OUT_RUN/camilladsp.log" | tail -1 | cut -c28-)"
   fi
   doctor_unit player-guard "one source at a time" required
   doctor_unit player-guard-helper "playerui's privileged helper" required

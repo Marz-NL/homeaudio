@@ -91,6 +91,16 @@ room_adopt() {
   systemctl cat sendspin >/dev/null 2>&1 && ! systemctl cat sendspin | grep -q -- '--hardware-volume' &&
     conf_set SENDSPIN_HWVOL n
   [ -n "${WANT_CAMILLADSP:-}" ] || { conf_set WANT_CAMILLADSP n; conf_set OUTPUT_ENGINE direct; conf_set OUTPUT_RATE native; }
+  # A drop-in that sets ExecStart would keep overriding the units written
+  # below: move it aside (its settings are taken over above)
+  local u d
+  for u in sendspin pibuz spotifyd shairport-sync player-guard now-playing playerui player-guard-helper; do
+    for d in /etc/systemd/system/$u.service.d/*.conf; do
+      [ -f "$d" ] && grep -q '^ExecStart=' "$d" || continue
+      run mv "$d" "$d.before-homeaudio"
+      info "moved aside $d (kept as .before-homeaudio)"
+    done
+  done
   info "room \"${ROOM_NAME:-?}\", DAC ${DAC_CARD:-?}, volume '${MIXER_CONTROL:-none}' (${VOLUME_MODE:-?})"
   info "sources: qobuz=$WANT_QOBUZ spotify=$WANT_SPOTIFY airplay=$WANT_AIRPLAY music-assistant=$WANT_MA${SENDSPIN_ID:+ (sendspin id $SENDSPIN_ID)}"
   unset -f v unit

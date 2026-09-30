@@ -45,8 +45,6 @@ doctor_room() {
     bad "CamillaDSP is set to $(cat "$OUT_TARGET" 2>/dev/null), the web page says $(out_label)" "sudo ./install.sh rate ${rate}"
   else
     ok "output: $(out_label), through CamillaDSP ($(/usr/local/bin/camilladsp --version 2>/dev/null | awk '{print $2}'))"
-    grep -q ERROR "$OUT_RUN/camilladsp.log" 2>/dev/null &&
-      note "CamillaDSP's last stream logged an error: $(grep ERROR "$OUT_RUN/camilladsp.log" | tail -1 | cut -c28-)"
   fi
   doctor_unit player-guard "one source at a time" required
   doctor_unit player-guard-helper "playerui's privileged helper" required
@@ -58,7 +56,9 @@ doctor_room() {
   doctor_unit sendspin "Music Assistant player"
   doctor_http "playerui" "http://localhost:8189/status"
 
-  if systemctl is-active -q pibuz; then
+  if systemctl is-active -q pibuz && [ "$(id -u)" -ne 0 ]; then
+    note "pibuz: run doctor with sudo to check that it answers"
+  elif systemctl is-active -q pibuz; then
     if runuser -u "$(sed -n 's/^PIBUZ_USER=//p' /etc/player-guard.env)" -- pibuz ping >/dev/null 2>&1; then
       ok "pibuz answers"
       local curve

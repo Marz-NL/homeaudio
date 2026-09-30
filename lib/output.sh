@@ -146,6 +146,17 @@ else
   out=$target convert=1
 fi
 DAC=$(sed -n 's/^USB_CARD=//p' /etc/homeaudio/cdsp-dac)
+# A new stream right after the last one (a seek, the next track): the plugin
+# starts a new CamillaDSP while the previous one may still be letting go of
+# the DAC - it would find it busy and stop. Give that one a moment (~2 s);
+# a DAC another source holds is player-guard's business, not waited for longer.
+if [ -z "$reload" ]; then
+  i=0
+  while [ $i -lt 20 ] && pgrep -x camilladsp >/dev/null &&
+        ! grep -q closed "/proc/asound/$DAC/pcm0p/sub0/status" 2>/dev/null; do
+    sleep 0.1; i=$((i + 1))
+  done
+fi
 {
   cat <<EOF
 devices:

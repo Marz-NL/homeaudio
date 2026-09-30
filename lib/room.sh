@@ -10,6 +10,7 @@ SOURCES="ma qobuz spotify airplay"
 room_main() {
   need_root room
   room_checks
+  room_adopt                # a room set up before this installer: keep what it has
   room_questions            # every question first, then no more waiting on input
   local src chosen=""
   for src in $SOURCES; do
@@ -55,6 +56,41 @@ room_checks() {
   . /etc/os-release
   info "$PRETTY_NAME, $(tr -d '\0' < /proc/device-tree/model 2>/dev/null || echo 'unknown model')"
   [ "${VERSION_CODENAME:-}" = trixie ] || warn "tested on Debian 13 (trixie) only, this is ${VERSION_CODENAME:-unknown}"
+}
+
+# ---------------------------------------------------------------- adopt
+
+# A room set up by hand or by an older version, without install.conf yet:
+# take over its answers from what's there, so it keeps its name, DAC, volume,
+# sources, Music Assistant connection (token included - it never leaves this
+# Pi) and sendspin id (Music Assistant knows the player by it).
+room_adopt() {
+  [ -f "$ENV_FILE" ] && [ -z "${ROOM_NAME:-}" ] || return 0
+  say "Taking over this room's current setup"
+  local v unit
+  v() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -1; }
+  [ -n "$(v USB_CARD)" ]   && conf_set DAC_CARD "$(v USB_CARD)"
+  [ -n "$(v PIBUZ_USER)" ] && conf_set AUDIO_USER "$(v PIBUZ_USER)"
+  [ -n "$(v HA_WEBHOOK)" ] && conf_set HA_WEBHOOK "$(v HA_WEBHOOK)"
+  if [ -n "$(v MA_URL)" ]; then
+    conf_set MA_URL "$(v MA_URL)"; conf_set MA_TOKEN "$(v MA_TOKEN)"; conf_set MA_PLAYER "$(v MA_PLAYER)"
+  fi
+  if [ -f "$MANIFEST" ]; then
+    v=$(sed -n 's/^room *= *"\(.*\)".*/\1/p' "$MANIFEST" | head -1);          [ -n "$v" ] && conf_set ROOM_NAME "$v"
+    v=$(sed -n 's/^mode *= *"\(.*\)".*/\1/p' "$MANIFEST" | head -1);          [ -n "$v" ] && conf_set VOLUME_MODE "$v"
+    v=$(sed -n 's/^mixer_control *= *"\([^"]*\)".*/\1/p' "$MANIFEST" | head -1); [ -n "$v" ] && conf_set MIXER_CONTROL "$v"
+  fi
+  unit() { systemctl cat "$1" >/dev/null 2>&1 && echo y || echo n; }
+  conf_set WANT_QOBUZ "$(unit pibuz)"
+  conf_set WANT_SPOTIFY "$(unit spotifyd)"
+  conf_set WANT_AIRPLAY "$(unit shairport-sync)"
+  conf_set WANT_MA "$(unit sendspin)"
+  v=$(systemctl cat sendspin 2>/dev/null | sed -n 's/^ExecStart=.* --id \([^ ]*\).*/\1/p' | tr -d '"')
+  [ -n "$v" ] && conf_set SENDSPIN_ID "$v"
+  [ -n "${WANT_CAMILLADSP:-}" ] || { conf_set WANT_CAMILLADSP n; conf_set OUTPUT_ENGINE direct; conf_set OUTPUT_RATE native; }
+  info "room \"${ROOM_NAME:-?}\", DAC ${DAC_CARD:-?}, volume '${MIXER_CONTROL:-none}' (${VOLUME_MODE:-?})"
+  info "sources: qobuz=$WANT_QOBUZ spotify=$WANT_SPOTIFY airplay=$WANT_AIRPLAY music-assistant=$WANT_MA${SENDSPIN_ID:+ (sendspin id $SENDSPIN_ID)}"
+  unset -f v unit
 }
 
 # ---------------------------------------------------------------- questions

@@ -6,6 +6,9 @@ on upstream **1.7.6** (commit `6762817`), with changes for Denon/Marantz
 **HEOS** speakers. HEOS has no real UPnP/DLNA transport and no seek command,
 so it is driven over its own CLI protocol (port 1255).
 
+Only tested with a **Denon HEOS 5**; other HEOS devices use the same CLI
+protocol but are untested.
+
 ## Changes compared with upstream 1.7.6
 
 | File | Change |

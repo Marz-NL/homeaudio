@@ -94,6 +94,11 @@ cd docker && docker compose up -d --build       # http://<host>:8189
 ## HEOS bridge (optional)
 
 Makes a HEOS speaker a Qobuz Connect device, on a homelab or on a Pi.
+
+> **Tested with one speaker only: a Denon HEOS 5.** Other HEOS models (and
+> Marantz/Denon amplifiers with HEOS built in) speak the same HEOS CLI
+> protocol, so they may well work, but nobody has tried yet. If you do, an
+> issue saying how it went - working or not - is very welcome.
 `install.sh heos` (also without Docker) is coming; for now, with Docker:
 
 ```

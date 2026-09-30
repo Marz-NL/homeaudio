@@ -1,0 +1,21 @@
+# playerui manifest for the central "hub" instance (webui/docker): a pure
+# remote viewer - no local audio hardware, no player-guard, no
+# player-guard-helper running alongside it, just this one binary.
+# Copy to config/hub.toml before `docker compose up`.
+#
+# The trick: `rooms` lists the real per-room instances but not this one, so
+# this instance's own (empty) tab never renders - the page shows only the
+# rooms, each fetched directly from the browser exactly the same way a
+# browser opening a room's own playerui does. The container is just another
+# place to load the same static page.
+#
+# Everything below the `rooms` line only exists because the manifest format
+# requires it - none of it is ever read or shown, since this instance's own
+# tab is deliberately excluded from `rooms`.
+
+room = "Overview"
+audio_owner_file = "/dev/null"
+rooms = ["http://livingroom.local:8189", "http://bedroom.local:8189"]
+
+[music_assistant]
+env_file = "/dev/null"

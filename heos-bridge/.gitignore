@@ -1,0 +1,3 @@
+.env
+qobuz-proxy/data/
+__pycache__/

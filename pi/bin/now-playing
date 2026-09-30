@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+"""Track what plays on this room's DAC, for playerui and (optionally) Home
+Assistant. See add-now-playing.sh."""
+import http.server, json, os, socket, subprocess, threading, time, urllib.parse, urllib.request
+
+def load_env(path="/etc/player-guard.env"):
+    env = {}
+    for line in open(path):
+        if "=" in line and not line.startswith("#"):
+            k, v = line.rstrip("\n").split("=", 1)
+            env[k.strip()] = v.strip()
+    return env
+
+ENV = load_env()
+CARD = ENV["USB_CARD"]
+STATUS = f"/proc/asound/{CARD}/pcm0p/sub0/status"
+OWNER = "/run/player-guard/audio-owner"
+COVER_DIR = "/run/player-guard/airplay-cover"   # shairport-sync cover_art_cache_directory
+COVER_PORT = 8190
+NAMES = {"ma": "Music Assistant", "qobuz": "Qobuz", "spotify": "Spotify", "airplay": "AirPlay"}
+
+def sh(*cmd, timeout=3):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
+    except Exception:
+        return ""
+
+def http_json(url, data=None, headers=None, timeout=3):
+    try:
+        req = urllib.request.Request(url, data=data, headers=headers or {})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read() or b"null")
+    except Exception:
+        return None
+
+def dac_playing():
+    try:
+        return "state: RUNNING" in open(STATUS).read()
+    except OSError:
+        return False
+
+def dac_holder():
+    """Which source has the DAC open, by process name (same rule as the guard)."""
+    card = os.path.basename(os.path.realpath(f"/proc/asound/{CARD}")).replace("card", "")
+    pids = sh("fuser", f"/dev/snd/pcmC{card}D0p").split()
+    for pid in pids:
+        pid = "".join(c for c in pid if c.isdigit())
+        try:
+            comm = open(f"/proc/{pid}/comm").read().strip()
+        except OSError:
+            continue
+        if comm.startswith("pibuz"):
+            return "qobuz"
+        if comm.startswith("spotifyd"):
+            return "spotify"
+        if comm.startswith("shairport"):
+            return "airplay"
+        if comm.startswith(("sendspin", "python")):   # Music Assistant's sendspin
+            return "ma"
+        return None   # something not managed here
+    return None
+
+def text(v):
+    if isinstance(v, list):
+        return ", ".join(text(x) for x in v)
+    if isinstance(v, dict):
+        return text(v.get("name") or v.get("title") or "")
+    return "" if v is None else str(v)
+
+def info_qobuz():
+    d = http_json("http://127.0.0.1:8182/api/now-playing") or {}
+    t = d.get("track") or {}
+    return (text(t.get("title")), text(t.get("artist")), text(t.get("album")),
+            text(t.get("artwork_url") or t.get("image")))
+
+def info_spotify():
+    pid = sh("pidof", "spotifyd").split()
+    if not pid:
+        return "", "", "", ""
+    out = sh("busctl", "--system", "--json=short", "get-property",
+             f"org.mpris.MediaPlayer2.spotifyd.instance{pid[0]}", "/org/mpris/MediaPlayer2",
+             "org.mpris.MediaPlayer2.Player", "Metadata")
+    try:
+        md = json.loads(out)["data"]
+    except Exception:
+        return "", "", "", ""
+    val = lambda k: (md.get(k) or {}).get("data")
+    return (text(val("xesam:title")), text(val("xesam:artist")), text(val("xesam:album")),
+            text(val("mpris:artUrl")))
+
+def info_ma():
+    if not ENV.get("MA_URL"):
+        return ("", "", "", "")
+    d = http_json(ENV["MA_URL"] + "/api",
+                  data=json.dumps({"message_id": "np", "command": "players/get",
+                                   "args": {"player_id": ENV["MA_PLAYER"]}}).encode(),
+                  headers={"Content-Type": "application/json",
+                           "Authorization": "Bearer " + ENV["MA_TOKEN"]})
+    if isinstance(d, dict) and "result" in d:
+        d = d["result"]
+    m = (d or {}).get("current_media") or {}
+    return (text(m.get("title")), text(m.get("artist")), text(m.get("album")),
+            text(m.get("image_url")))
+
+def my_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("192.0.2.1", 9))          # no traffic, just picks the LAN address
+        return s.getsockname()[0]
+    except OSError:
+        return socket.gethostname()
+
+def info_airplay():
+    out = sh("busctl", "--system", "--json=short", "get-property",
+             "org.mpris.MediaPlayer2.ShairportSync", "/org/mpris/MediaPlayer2",
+             "org.mpris.MediaPlayer2.Player", "Metadata")
+    try:
+        md = json.loads(out)["data"]
+    except Exception:
+        return "", "", "", ""                # not built with MPRIS yet: name only
+    val = lambda k: (md.get(k) or {}).get("data")
+    art = text(val("mpris:artUrl"))
+    path = urllib.parse.urlparse(art).path if art.startswith("file:") else art
+    cover = ""
+    if path and os.path.dirname(os.path.realpath(path)) == os.path.realpath(COVER_DIR) and os.path.exists(path):
+        cover = f"http://{my_ip()}:{COVER_PORT}/cover/{urllib.parse.quote(os.path.basename(path))}"
+    return text(val("xesam:title")), text(val("xesam:artist")), text(val("xesam:album")), cover
+
+class CoverServer(http.server.BaseHTTPRequestHandler):
+    """Serves only files from COVER_DIR, read-only."""
+    def do_GET(self):
+        name = os.path.basename(urllib.parse.unquote(self.path))
+        path = os.path.join(COVER_DIR, name)
+        if not self.path.startswith("/cover/") or not os.path.isfile(path):
+            self.send_error(404); return
+        data = open(path, "rb").read()
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png" if name.endswith(".png") else "image/jpeg")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "max-age=3600")
+        self.end_headers()
+        self.wfile.write(data)
+    def log_message(self, *args):
+        pass
+
+threading.Thread(target=http.server.ThreadingHTTPServer(("", COVER_PORT), CoverServer).serve_forever,
+                 daemon=True).start()
+
+INFO = {"qobuz": info_qobuz, "spotify": info_spotify, "ma": info_ma, "airplay": info_airplay}
+
+def now():
+    src = dac_holder() if dac_playing() else None
+    if not src:
+        return {"source": "", "title": "", "artist": "", "album": "", "cover": ""}
+    title, artist, album, cover = INFO[src]()
+    return {"source": NAMES[src], "title": title, "artist": artist, "album": album, "cover": cover}
+
+def send(state):
+    http_json(ENV["HA_WEBHOOK"], data=json.dumps(state).encode(),
+              headers={"Content-Type": "application/json"})
+
+NOW_PLAYING_FILE = "/run/player-guard/now-playing.json"
+
+def write_local(state):
+    tmp = NOW_PLAYING_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(state, f)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, NOW_PLAYING_FILE)
+
+last, last_sent = None, 0
+while True:
+    state = now()
+    write_local(state)
+    if ENV.get("HA_WEBHOOK") and (state != last or time.time() - last_sent > 60):
+        send(state)
+        last, last_sent = state, time.time()
+    time.sleep(2)

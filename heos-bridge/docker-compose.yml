@@ -1,0 +1,30 @@
+# HEOS integration stack: everything that talks to a HEOS speaker over its
+# native CLI protocol (port 1255), since it never answers SSDP and doesn't
+# implement real UPnP/DLNA at all.
+#
+# Both services need host networking: qobuz-proxy for mDNS discovery
+# (Qobuz Connect advertisement), heos-guard for simplicity reaching the
+# same HEOS_IP and qobuz-proxy's status API.
+#
+# Copy .env.example to .env and fill it in first.
+services:
+  qobuz-proxy:
+    build: ./qobuz-proxy
+    container_name: qobuz-proxy
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TZ: ${TZ:-UTC}
+    volumes:
+      # Qobuz login and speaker config live here - never commit it
+      - ./qobuz-proxy/data:/data
+
+  heos-guard:
+    build: ./heos-guard
+    container_name: heos-guard
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - .env  # HEOS_IP, MASS_API_URL/TOKEN, HA_WEBHOOK_URL - never commit it
+    environment:
+      QOBUZ_PROXY_STATUS_URL: "http://localhost:8689/api/status"

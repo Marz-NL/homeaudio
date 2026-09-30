@@ -1,0 +1,8 @@
+#!/bin/sh
+. /etc/player-guard.env
+D=/run/player-guard
+STATUS=/proc/asound/$USB_CARD/pcm0p/sub0/status
+touch $D/airplay-active
+echo airplay > $D/audio-owner
+i=0; while ! grep -q closed "$STATUS" 2>/dev/null && [ $i -lt 40 ]; do sleep 0.2; i=$((i+1)); done
+exit 0

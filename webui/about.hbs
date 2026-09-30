@@ -1,0 +1,12 @@
+Third-party licenses for playerui and player-guard-helper
+==========================================================
+
+These binaries include code from the Rust crates below.
+{{#each licenses}}
+
+------------------------------------------------------------------------------
+{{name}} - used by: {{#each used_by}}{{crate.name}} {{crate.version}}{{#unless @last}}, {{/unless}}{{/each}}
+------------------------------------------------------------------------------
+
+{{text}}
+{{/each}}

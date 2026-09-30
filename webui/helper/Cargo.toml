@@ -1,0 +1,15 @@
+[package]
+name = "player-guard-helper"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[[bin]]
+name = "player-guard-helper"
+path = "src/main.rs"
+
+[dependencies]
+protocol = { path = "../protocol" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+toml_edit = "0.22"

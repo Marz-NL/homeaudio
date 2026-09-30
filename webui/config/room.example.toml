@@ -1,0 +1,69 @@
+# playerui / player-guard-helper / player-guard manifest for one room (Pi).
+# Install as /etc/player-guard-services.toml. One source of truth for "what
+# audio sources exist on this Pi, are they toggleable, and where do job
+# recipes for adding new ones live" - read by playerui (unprivileged),
+# player-guard-helper (root) and player-guard.
+
+room = "Living room"
+audio_owner_file = "/run/player-guard/audio-owner"
+now_playing_file = "/run/player-guard/now-playing.json"
+helper_socket = "/run/player-guard/helper.sock"
+
+# Every room's playerui, this one included - lets any room's page show the
+# whole house (multiroom-in-one-page), each room's card still talking
+# directly to that room's own playerui, no central server involved.
+rooms = ["http://livingroom.local:8189", "http://bedroom.local:8189"]
+
+# Music Assistant is a connection, not a toggle: sendspin is never restarted
+# by the guard, so there is no enable/disable for it - only "configured"
+# (MA_URL/MA_TOKEN/MA_PLAYER present in this file) and, during setup, a live
+# players/all check against MA_URL.
+[music_assistant]
+env_file = "/etc/player-guard.env"
+
+[[service]]
+id = "pibuz"
+name = "Qobuz Connect"
+unit = "pibuz"
+toggleable = true
+
+[[service]]
+id = "spotifyd"
+name = "Spotify Connect"
+unit = "spotifyd"
+toggleable = true
+
+[[service]]
+id = "shairport-sync"
+name = "AirPlay 2"
+unit = "shairport-sync"
+toggleable = true
+
+[[service]]
+id = "player-guard"
+name = "Player guard"
+unit = "player-guard"
+toggleable = false   # disabling this breaks DAC arbitration entirely
+
+# Scripts run by player-guard-helper when you "add" a source that isn't
+# installed yet (paths assume the repo is cloned to /opt/homeaudio). A
+# successful job appends its [[service]] entry above by itself.
+[jobs]
+add_qobuz = "/opt/homeaudio/pi/jobs/add-qobuz.sh"
+add_spotify = "/opt/homeaudio/pi/jobs/add-spotify.sh"
+add_airplay2 = "/opt/homeaudio/pi/jobs/add-airplay.sh"
+
+# Volume: all hardware-volume sources (sendspin, spotifyd, shairport-sync)
+# drive the DAC's one hardware mixer; player-guard applies the mode when the
+# source changes. Leave mixer_card/mixer_control out to let the guard leave
+# the volume alone. Find yours with: amixer -D hw:CARD=<card> scontrols
+[volume]
+mode = "shared"                  # "shared" keeps the level, "per_source" restores each source's own
+mixer_card = "hw:CARD=E30"       # e.g. hw:CARD=sndrpihifiberry for a HiFiBerry DAC+
+mixer_control = "E30 "           # exact name, trailing spaces included (HiFiBerry: "Digital")
+# Sources with only their own software volume (pibuz): while one plays, the
+# mixer sits at the top of its range so its own slider is the real volume.
+software_sources = ["qobuz"]
+# ...and they share the one level with the others instead of keeping their
+# own. Needs a linear software curve: pibuz settings set audio.volume_curve linear
+software_sources_follow = true

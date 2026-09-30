@@ -1,0 +1,739 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Home Audio Control Center</title>
+<style>
+  :root {
+    --bg: #f5f5f7; --card: #ffffff; --text: #1a1a1e; --muted: #6b6b73;
+    --border: #e2e2e6; --accent: #3b82f6; --accent-bg: #eaf1ff;
+    --danger: #d94b4b; --danger-bg: #fdeceb; --ok: #2fa86a; --ok-bg: #e8f7ef;
+    --now-bg: #101014; --now-text: #f1f1f3; --now-muted: #9d9da5;
+    --radius: 16px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16161a; --card: #232328; --text: #f1f1f3; --muted: #9a9aa2;
+      --border: #333338; --accent: #5b9bff; --accent-bg: #1c2b46;
+      --danger-bg: #3a2020; --ok-bg: #16321f;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #16161a; --card: #232328; --text: #f1f1f3; --muted: #9a9aa2;
+    --border: #333338; --accent: #5b9bff; --accent-bg: #1c2b46;
+    --danger-bg: #3a2020; --ok-bg: #16321f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding-inline: 16px; padding-block: 24px 48px;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .shell { max-width: 960px; margin: 0 auto; }
+  .unreachable-note { color: var(--muted); font-size: 0.9rem; margin: 0; }
+
+  /* Top bar: app heading + theme toggle */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px; gap: 12px;
+  }
+  .app-title { font-size: 1.5rem; font-weight: 700; margin: 0; text-wrap: balance; }
+  .theme-toggle {
+    width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--border);
+    background: var(--card); color: var(--text); cursor: pointer; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .theme-toggle svg { width: 18px; height: 18px; }
+
+  /* Tabs: a segmented control, one segment per room - reads clearly as
+     navigation rather than a loose row of buttons. */
+  .tabs {
+    display: inline-flex; gap: 2px; margin-bottom: 24px; padding: 4px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 999px;
+    flex-wrap: wrap;
+  }
+  .tab {
+    font: inherit; font-size: 0.88rem; font-weight: 500; padding: 8px 18px;
+    border-radius: 999px; border: none; background: transparent;
+    color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+  }
+  .tab.active { background: var(--accent); color: white; box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
+  .tab .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+  .tab.active .pulse { background: white; }
+
+  section { margin-bottom: 24px; }
+  .section-label {
+    font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 10px;
+  }
+
+  /* Pane: settings on the left, bigger Now Playing on the right */
+  .pane { display: flex; gap: 28px; align-items: flex-start; }
+  /* Fixed, not flexible - so an idle "Nothing playing" line on the right
+     (much shorter content than a full now-playing card) can't shrink this
+     column or shift it around. */
+  .pane-left { flex: 0 0 510px; width: 510px; } /* 50% wider than the original 340px */
+  .pane-right { flex: 1 1 auto; min-width: 0; }
+  @media (max-width: 720px) {
+    .pane { flex-direction: column; }
+    .pane-left { flex-basis: auto; width: 100%; }
+    .pane-right { order: -1; width: 100%; }
+  }
+
+  /* Now Playing - hero size, in the right pane */
+  .now-hero {
+    background: var(--now-bg); color: var(--now-text); border-radius: 20px;
+    padding: 24px; display: flex; align-items: center; gap: 20px; min-height: 160px;
+  }
+  .now-hero.idle { color: var(--now-muted); font-size: 1rem; justify-content: center; }
+  .now-hero .cover {
+    width: 140px; height: 140px; border-radius: 14px; flex-shrink: 0;
+    background: linear-gradient(135deg, #4a3b7a, #7a4b8f);
+    display: flex; align-items: center; justify-content: center; font-size: 3rem;
+    object-fit: cover; box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+  }
+  .now-hero .now-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .now-hero .now-track { font-size: 1.25rem; font-weight: 700; text-wrap: balance; }
+  .now-hero .now-album { color: var(--now-muted); font-size: 1rem; }
+  .now-hero .now-artist { color: var(--now-muted); font-size: 1rem; }
+  .now-hero .now-source { color: var(--now-muted); font-size: 0.8rem; margin-top: 8px;
+    display: inline-flex; align-items: center; gap: 6px; }
+  .now-hero .now-source .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+
+  /* Cards (setup toggles + MA + add-a-source) */
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 13px 16px; margin-bottom: 8px;
+  }
+  .card-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .card-name { font-weight: 500; }
+  .card-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .disclosure-btn {
+    font: inherit; font-size: 0.78rem; color: var(--muted); background: none;
+    border: none; cursor: pointer; display: inline-flex; align-items: center;
+    gap: 4px; padding: 2px 4px; flex-shrink: 0;
+  }
+  .disclosure-btn .triangle { display: inline-block; transition: transform 0.15s ease; font-size: 0.7em; }
+  .disclosure-btn[aria-expanded="true"] .triangle { transform: rotate(90deg); }
+  .guard-log-panel { width: 100%; margin-top: 10px; }
+  .badge {
+    font-size: 0.75rem; font-weight: 500; padding: 3px 9px; border-radius: 999px;
+    display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; white-space: nowrap;
+  }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .badge.off { background: var(--border); color: var(--muted); }
+  .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .locked { font-size: 0.78rem; color: var(--muted); padding: 2px 8px;
+    border: 1px solid var(--border); border-radius: 999px; flex-shrink: 0; white-space: nowrap; }
+  .btn {
+    font: inherit; font-size: 0.85rem; font-weight: 500; padding: 7px 14px;
+    border-radius: 999px; border: 1px solid var(--border); background: var(--bg);
+    color: var(--text); cursor: pointer;
+  }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .switch { position: relative; width: 46px; height: 26px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .slider { position: absolute; inset: 0; background: var(--border); border-radius: 999px;
+    cursor: pointer; transition: background 0.2s ease; }
+  .slider::before { content: ""; position: absolute; width: 20px; height: 20px; left: 3px; top: 3px;
+    background: white; border-radius: 50%; transition: transform 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+  input:checked + .slider { background: var(--accent); }
+  input:checked + .slider::before { transform: translateX(20px); }
+  input:focus-visible + .slider { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Setup forms (MA connect) */
+  .form { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); display: grid; gap: 8px; }
+  .form label { font-size: 0.8rem; color: var(--muted); }
+  .form input, .form select {
+    font: inherit; width: 100%; padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  }
+  .form-actions { display: flex; gap: 8px; margin-top: 4px; }
+  .form-error { color: var(--danger); font-size: 0.82rem; }
+
+  /* Job log */
+  .log-panel {
+    margin-top: 10px; background: #0c0c0f; color: #d7d7dc; border-radius: 10px;
+    padding: 10px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.76rem; line-height: 1.5; max-height: 220px; overflow-y: auto;
+    white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .log-status { font-size: 0.8rem; margin-top: 6px; }
+  .log-status.running { color: var(--muted); }
+  .log-status.success { color: var(--ok); }
+  .log-status.failed { color: var(--danger); }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <div class="topbar">
+      <h1 class="app-title">Home Audio Control Center</h1>
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle light/dark theme" title="Toggle light/dark theme"></button>
+    </div>
+    <nav class="tabs" id="tabs"></nav>
+    <div class="pane" id="pane"><p style="color:var(--muted)">Loading&hellip;</p></div>
+  </div>
+
+<script>
+const DAC_LABEL = { ma: "Music Assistant", qobuz: "Qobuz Connect", spotify: "Spotify Connect", airplay: "AirPlay 2", none: "nothing" };
+const JOB_SLUGS = { AddQobuz: "add-qobuz", AddSpotify: "add-spotify", AddAirplay2: "add-airplay2" };
+// Fixed display order regardless of manifest/array order, so every room's
+// pane reads the same: Music Assistant (rendered separately, always first),
+// then Qobuz, Spotify, AirPlay 2, Player guard last.
+const SERVICE_ORDER = { pibuz: 0, spotifyd: 1, "shairport-sync": 2, "player-guard": 3 };
+
+let results = [];      // last fetch, one entry per room: {base, data, job, error}
+let activeIndex = 0;
+let maFormOpen = false;   // is a Music Assistant setup form open in the active pane
+let guardLogOpen = false; // is the player-guard log panel open in the active pane
+// The periodic refresh rebuilds the active pane, which would blow away an
+// open Music Assistant form (losing typed input) or orphan a running job's
+// live log panel - suspended while either is true for the active room.
+let autoRefreshSuspended = false;
+// Every setInterval backing a live log view (a job's, or the guard log's)
+// gets tracked here and cleared whenever the pane is about to be rebuilt -
+// otherwise switching tabs away from one leaves it polling a detached
+// element forever instead of actually stopping.
+let activePollers = [];
+function clearActivePollers() {
+  activePollers.forEach(clearInterval);
+  activePollers = [];
+}
+
+async function fetchJSON(url, opts) {
+  const res = await fetch(url, opts);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `request failed (${res.status})`);
+  return body;
+}
+
+function roomLabelFromBase(base) {
+  if (!base) return "This room";
+  try {
+    const host = new URL(base).hostname;
+    return host.charAt(0).toUpperCase() + host.slice(1);
+  } catch {
+    return base;
+  }
+}
+
+async function loadAll() {
+  let self;
+  try {
+    self = await fetchJSON("/status");
+  } catch (e) {
+    document.getElementById("pane").innerHTML = `<p style="color:var(--danger)">Can't reach this room's playerui: ${e.message}</p>`;
+    return;
+  }
+  const bases = self.rooms && self.rooms.length ? self.rooms : [""];
+  results = await Promise.all(bases.map(async (base) => {
+    try {
+      const data = base === "" ? self : await fetchJSON(base + "/status");
+      // Always check for an in-progress job, not just when this browser
+      // started one - a reload, a second tab, or a tab switch away and back
+      // should all reconnect to it rather than showing "Set up" again while
+      // it's still running server-side.
+      const job = await fetchJSON(`${base}/jobs/log?since=0`).catch(() => null);
+      return { base, data, job };
+    } catch (e) {
+      return { base, error: e.message };
+    }
+  }));
+
+  recomputeSuspend();
+  renderApp();
+}
+
+function recomputeSuspend() {
+  const active = results[activeIndex];
+  autoRefreshSuspended = maFormOpen || guardLogOpen || !!(active && active.job && active.job.running);
+}
+
+function renderApp() {
+  clearActivePollers();
+  const tabs = document.getElementById("tabs");
+  tabs.innerHTML = "";
+  results.forEach((r, i) => {
+    const btn = document.createElement("button");
+    btn.className = "tab" + (i === activeIndex ? " active" : "");
+    const label = r.data ? r.data.room : roomLabelFromBase(r.base);
+    if (r.job && r.job.running) {
+      const pulse = document.createElement("span");
+      pulse.className = "pulse";
+      btn.append(pulse);
+    }
+    btn.append(document.createTextNode(label));
+    btn.addEventListener("click", () => {
+      if (i === activeIndex) return;
+      activeIndex = i;
+      maFormOpen = false;
+      guardLogOpen = false;
+      recomputeSuspend();
+      renderApp();
+    });
+    tabs.append(btn);
+  });
+
+  const pane = document.getElementById("pane");
+  pane.innerHTML = "";
+  const r = results[activeIndex];
+  if (!r) return;
+  if (r.error) {
+    pane.innerHTML = `<p class="unreachable-note">Not reachable right now &mdash; probably not set up yet, or offline.</p>`;
+    return;
+  }
+  pane.append(renderPane(r.base, r.data, r.job));
+}
+
+function renderPane(base, data, job) {
+  const wrap = document.createElement("div");
+  wrap.className = "pane";
+
+  const left = document.createElement("div");
+  left.className = "pane-left";
+  left.append(renderSetup(base, data));
+  if (job && job.running) {
+    left.append(renderResumedJob(base, job));
+  } else if (data.available_jobs.length) {
+    left.append(renderAddSource(base, data));
+  }
+
+  const right = document.createElement("div");
+  right.className = "pane-right";
+  right.append(renderNowPlaying(data));
+
+  wrap.append(left, right);
+  return wrap;
+}
+
+function renderResumedJob(base, job) {
+  const section = document.createElement("section");
+  const label = document.createElement("p");
+  label.className = "section-label";
+  label.textContent = "Add a source";
+  section.append(label);
+
+  const card = document.createElement("div");
+  card.className = "card";
+  section.append(card);
+
+  attachJobLog(base, "the new source", card, null, job.lines, job.next_offset);
+  return section;
+}
+
+function renderNowPlaying(data) {
+  const section = document.createElement("section");
+  section.className = "now-playing-section";
+  const label = document.createElement("p");
+  label.className = "section-label";
+  label.textContent = "Now playing";
+  section.append(label);
+
+  const card = document.createElement("div");
+  if (data.now_playing) {
+    card.className = "now-hero";
+    const np = data.now_playing;
+    const coverHtml = np.cover
+      ? `<img class="cover" src="${np.cover}" alt="">`
+      : `<div class="cover">&#127925;</div>`;
+    // Track, then album, then artist, top to bottom - album is left out
+    // entirely when a source doesn't report one rather than showing a blank line.
+    const albumHtml = np.album ? `<div class="now-album"></div>` : "";
+    card.innerHTML = `
+      ${coverHtml}
+      <div class="now-text">
+        <div class="now-track"></div>
+        ${albumHtml}
+        <div class="now-artist"></div>
+        <div class="now-source"><span class="dot"></span><span class="now-source-text"></span></div>
+      </div>`;
+    card.querySelector(".now-track").textContent = np.title || "(untitled)";
+    if (np.album) card.querySelector(".now-album").textContent = np.album;
+    card.querySelector(".now-artist").textContent = np.artist || "";
+    card.querySelector(".now-source-text").textContent = np.source;
+  } else {
+    card.className = "now-hero idle";
+    card.textContent = `Nothing playing (${DAC_LABEL[data.dac_owner] || data.dac_owner})`;
+  }
+  section.append(card);
+  return section;
+}
+
+// A name/right-cluster row shared by every "connected"-style card (Music
+// Assistant, Player guard, and any future one) so they all line up exactly
+// the same way instead of each growing its own slightly different layout.
+function serviceRow(name, rightChildren) {
+  const card = document.createElement("div");
+  card.className = "card card-row";
+  const nameEl = document.createElement("div");
+  nameEl.className = "card-name";
+  nameEl.textContent = name;
+  const right = document.createElement("div");
+  right.className = "card-right";
+  right.append(...rightChildren);
+  card.append(nameEl, right);
+  return card;
+}
+
+function connectedBadge(active, onLabel, offLabel) {
+  const badge = document.createElement("span");
+  badge.className = "badge " + (active ? "ok" : "off");
+  badge.innerHTML = `<span class="dot"></span>${active ? onLabel : offLabel}`;
+  return badge;
+}
+
+function renderSetup(base, data) {
+  const section = document.createElement("section");
+  const label = document.createElement("p");
+  label.className = "section-label";
+  label.textContent = "Setup";
+  section.append(label);
+
+  section.append(renderMusicAssistantCard(base, data));
+
+  const services = [...data.services].sort(
+    (a, b) => (SERVICE_ORDER[a.id] ?? 99) - (SERVICE_ORDER[b.id] ?? 99)
+  );
+  for (const svc of services) {
+    if (svc.toggleable) {
+      const label = document.createElement("label");
+      label.className = "switch";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = svc.enabled;
+      input.addEventListener("change", () => toggleService(base, svc.id, input.checked, input));
+      const slider = document.createElement("span");
+      slider.className = "slider";
+      label.append(input, slider);
+      section.append(serviceRow(svc.name, [label]));
+    } else if (svc.id === "player-guard") {
+      section.append(renderPlayerGuardCard(base, svc));
+    } else {
+      const badge = connectedBadge(svc.active, "Connected", "Not running");
+      const lock = document.createElement("span");
+      lock.className = "locked";
+      lock.textContent = "always on";
+      section.append(serviceRow(svc.name, [badge, lock]));
+    }
+  }
+  return section;
+}
+
+// Player guard gets its own card (instead of the plain serviceRow every
+// other non-toggleable service uses) so its live log can expand beneath it -
+// a small labeled disclosure triangle, closed by default, that starts
+// polling journalctl only while open.
+function renderPlayerGuardCard(base, svc) {
+  const badge = connectedBadge(svc.active, "Connected", "Not running");
+  const lock = document.createElement("span");
+  lock.className = "locked";
+  lock.textContent = "always on";
+
+  const disclosure = document.createElement("button");
+  disclosure.className = "disclosure-btn";
+  disclosure.setAttribute("aria-expanded", "false");
+  disclosure.innerHTML = `<span class="triangle">&#9656;</span>Log`;
+
+  // Not serviceRow() here - that returns a single flex row element, and the
+  // log panel needs to sit as a block beneath the row, not as a third flex
+  // item squeezed into it. Same visual row, just one level deeper.
+  const card = document.createElement("div");
+  card.className = "card";
+  const row = document.createElement("div");
+  row.className = "card-row";
+  const nameEl = document.createElement("div");
+  nameEl.className = "card-name";
+  nameEl.textContent = svc.name;
+  const right = document.createElement("div");
+  right.className = "card-right";
+  right.append(disclosure, badge, lock);
+  row.append(nameEl, right);
+  card.append(row);
+
+  const panel = document.createElement("div");
+  panel.className = "log-panel guard-log-panel";
+  panel.hidden = true;
+  card.append(panel);
+
+  let guardPoller = null;
+  disclosure.addEventListener("click", () => {
+    const opening = panel.hidden;
+    panel.hidden = !opening;
+    disclosure.setAttribute("aria-expanded", String(opening));
+    guardLogOpen = opening;
+    recomputeSuspend();
+    if (opening) {
+      panel.textContent = "Loading…";
+      guardPoller = pollGuardLog(base, panel);
+    } else if (guardPoller) {
+      // Only this one interval - other live views (e.g. a running build's
+      // log) elsewhere in the pane must keep polling untouched.
+      clearInterval(guardPoller);
+      guardPoller = null;
+    }
+  });
+
+  return card;
+}
+
+function pollGuardLog(base, panel) {
+  const fetchOnce = async () => {
+    try {
+      const { lines } = await fetchJSON(`${base}/guard-log`);
+      panel.textContent = lines.join("\n");
+      panel.scrollTop = panel.scrollHeight;
+    } catch (e) {
+      panel.textContent = `Couldn't load the guard log: ${e.message}`;
+    }
+  };
+  fetchOnce();
+  const id = setInterval(fetchOnce, 2000);
+  activePollers.push(id);
+  return id;
+}
+
+function renderMusicAssistantCard(base, data) {
+  const configured = data.music_assistant.configured;
+  const badge = connectedBadge(configured, "Connected", "Not connected");
+  const btn = document.createElement("button");
+  btn.className = "btn";
+  btn.textContent = configured ? "Reconfigure" : "Set up";
+  const card = serviceRow("Music Assistant", [badge, btn]);
+
+  btn.addEventListener("click", () => {
+    const existingForm = card.querySelector(".form");
+    if (existingForm) {
+      existingForm.remove();
+      maFormOpen = false;
+      recomputeSuspend();
+      return;
+    }
+    card.append(buildMusicAssistantForm(base));
+    maFormOpen = true;
+    recomputeSuspend();
+  });
+  return card;
+}
+
+function buildMusicAssistantForm(base) {
+  const form = document.createElement("div");
+  form.className = "form";
+  form.innerHTML = `
+    <label>Music Assistant URL <input type="text" class="ma-url" placeholder="http://192.168.1.50:8095"></label>
+    <label>Long-lived access token <input type="password" class="ma-token"></label>
+    <div class="form-actions">
+      <button class="btn primary ma-find">Find players</button>
+    </div>
+    <div class="form-error" hidden></div>
+    <div class="ma-players" hidden>
+      <label>Which player is this room? <select class="ma-select"></select></label>
+      <div class="form-actions"><button class="btn primary ma-connect">Connect</button></div>
+    </div>`;
+  const err = form.querySelector(".form-error");
+  const showErr = (msg) => { err.textContent = msg; err.hidden = false; };
+
+  form.querySelector(".ma-find").addEventListener("click", async (e) => {
+    err.hidden = true;
+    const url = form.querySelector(".ma-url").value.trim();
+    const token = form.querySelector(".ma-token").value.trim();
+    if (!url || !token) return showErr("URL and token are both required.");
+    e.target.disabled = true;
+    try {
+      const { players } = await fetchJSON(base + "/music-assistant/discover", {
+        method: "POST", body: JSON.stringify({ url, token }),
+      });
+      const select = form.querySelector(".ma-select");
+      select.innerHTML = "";
+      for (const p of players) {
+        const opt = document.createElement("option");
+        opt.value = p.player_id;
+        opt.textContent = `${p.display_name} (${p.provider})`;
+        select.append(opt);
+      }
+      form.querySelector(".ma-players").hidden = players.length === 0;
+      if (!players.length) showErr("Reached Music Assistant, but it has no players yet.");
+    } catch (ex) {
+      showErr(ex.message);
+    } finally {
+      e.target.disabled = false;
+    }
+  });
+
+  form.querySelector(".ma-connect").addEventListener("click", async (e) => {
+    err.hidden = true;
+    e.target.disabled = true;
+    try {
+      await fetchJSON(base + "/music-assistant/connect", {
+        method: "POST",
+        body: JSON.stringify({
+          url: form.querySelector(".ma-url").value.trim(),
+          token: form.querySelector(".ma-token").value.trim(),
+          player_id: form.querySelector(".ma-select").value,
+        }),
+      });
+      maFormOpen = false;
+      loadAll();
+    } catch (ex) {
+      showErr(ex.message);
+      e.target.disabled = false;
+    }
+  });
+
+  return form;
+}
+
+async function toggleService(base, id, enable, input) {
+  input.disabled = true;
+  try {
+    await fetchJSON(`${base}/services/${id}/${enable ? "enable" : "disable"}`, { method: "POST" });
+  } catch (e) {
+    alert(`Couldn't change ${id}: ${e.message}`);
+  } finally {
+    input.disabled = false;
+    loadAll();
+  }
+}
+
+function renderAddSource(base, data) {
+  const section = document.createElement("section");
+  const label = document.createElement("p");
+  label.className = "section-label";
+  label.textContent = "Add a source";
+  section.append(label);
+
+  for (const job of data.available_jobs) {
+    const btn = document.createElement("button");
+    btn.className = "btn primary";
+    btn.textContent = "Set up";
+    const card = serviceRow(job.label, [btn]);
+    btn.addEventListener("click", () => startJob(base, job.recipe, job.label, btn, card));
+    section.append(card);
+  }
+  return section;
+}
+
+async function startJob(base, recipe, label, btn, card) {
+  // Suspend the periodic refresh before the request even goes out, not
+  // after it resolves - otherwise the 4s auto-refresh can fire in that gap
+  // and wipe this card before we know the job started, orphaning it
+  // visually even though it's still running server-side.
+  autoRefreshSuspended = true;
+  btn.disabled = true;
+  btn.textContent = "Starting…";
+  const slug = JOB_SLUGS[recipe];
+  const params = slug === "add-spotify" ? { BUILD: "1" } : slug === "add-qobuz" ? { BUILD: "1" } : {};
+  try {
+    await fetchJSON(`${base}/jobs/${slug}`, { method: "POST", body: JSON.stringify(params) });
+  } catch (e) {
+    autoRefreshSuspended = maFormOpen; // job never started - nothing else to stay suspended for
+    btn.disabled = false;
+    btn.textContent = "Set up";
+    alert(`Couldn't start ${label}: ${e.message}`);
+    return;
+  }
+  btn.textContent = "Building…";
+  attachJobLog(base, label, card, btn, [], 0);
+}
+
+// Attaches a live, polling log panel to `card` for the job currently running
+// on `base` - used both right after starting one (fresh) and when a page
+// load (or tab switch) finds one already in progress (resuming, `btn` is
+// null then since we have no button tied to it here).
+function attachJobLog(base, label, card, btn, initialLines, initialOffset) {
+  const log = document.createElement("div");
+  log.className = "log-panel";
+  log.textContent = initialLines.join("\n") + (initialLines.length ? "\n" : "");
+  const status = document.createElement("div");
+  status.className = "log-status running";
+  status.textContent = `Setting up ${label}… this can take several minutes.`;
+  card.append(log, status);
+
+  let since = initialOffset;
+  const poll = setInterval(async () => {
+    let data;
+    try {
+      data = await fetchJSON(`${base}/jobs/log?since=${since}`);
+    } catch {
+      return; // transient - keep polling
+    }
+    if (data.lines.length) {
+      log.textContent += data.lines.join("\n") + "\n";
+      log.scrollTop = log.scrollHeight;
+      since = data.next_offset;
+    }
+    if (!data.running) {
+      clearInterval(poll);
+      // Set this directly rather than via recomputeSuspend() - the cached
+      // `results` entry for this room still says the job was running as of
+      // the last poll, so recomputing from it here would just re-suspend
+      // on stale data instead of reflecting that it just finished.
+      autoRefreshSuspended = maFormOpen;
+      if (data.exit_ok) {
+        status.className = "log-status success";
+        status.textContent = `${label} is set up.`;
+        setTimeout(loadAll, 1200);
+      } else {
+        status.className = "log-status failed";
+        status.textContent = `${label} setup failed - see the log above.`;
+        if (btn) { btn.disabled = false; btn.textContent = "Retry"; }
+      }
+    }
+  }, 1000);
+  activePollers.push(poll);
+}
+
+// Light/dark toggle. Auto-follows the OS by default (the CSS already
+// handles that via prefers-color-scheme); clicking sets an explicit
+// per-viewer override, remembered in this browser only.
+const SUN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>';
+const MOON_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+
+function effectiveTheme() {
+  const explicit = document.documentElement.getAttribute("data-theme");
+  if (explicit) return explicit;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+function updateThemeIcon() {
+  // Icon shown is the theme a click would switch TO.
+  document.getElementById("themeToggle").innerHTML = effectiveTheme() === "dark" ? SUN_SVG : MOON_SVG;
+}
+function initTheme() {
+  try {
+    const saved = localStorage.getItem("theme");
+    if (saved === "light" || saved === "dark") document.documentElement.setAttribute("data-theme", saved);
+  } catch {} // private browsing etc. - just fall back to following the OS
+  updateThemeIcon();
+}
+document.getElementById("themeToggle").addEventListener("click", () => {
+  const next = effectiveTheme() === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  try { localStorage.setItem("theme", next); } catch {}
+  updateThemeIcon();
+});
+initTheme();
+
+// While an open log keeps the pane from being rebuilt, "Now playing" would
+// freeze with it - swap just that section in place instead.
+async function refreshNowPlayingOnly() {
+  const r = results[activeIndex];
+  if (!r || r.error) return;
+  try {
+    const data = await fetchJSON(`${r.base}/status`);
+    const old = document.querySelector("#pane .now-playing-section");
+    if (!old || results[activeIndex] !== r) return;
+    r.data = data;
+    old.replaceWith(renderNowPlaying(data));
+  } catch {}
+}
+
+loadAll();
+setInterval(() => {
+  if (!autoRefreshSuspended) loadAll();
+  else if (!maFormOpen) refreshNowPlayingOnly();
+}, 4000);
+</script>
+</body>
+</html>

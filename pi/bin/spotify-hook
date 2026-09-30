@@ -1,0 +1,9 @@
+#!/bin/sh
+# spotifyd runs this on player events. Playing or loading = claim the DAC.
+D=/run/player-guard
+echo "$(date +%T) $PLAYER_EVENT" >> $D/spotify-hook.log
+case "$PLAYER_EVENT" in
+  start|load) touch $D/spotify-active; echo spotify > $D/audio-owner ;;
+  stop)       rm -f $D/spotify-active ;;
+esac
+exit 0

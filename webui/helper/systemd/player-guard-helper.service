@@ -1,0 +1,11 @@
+[Unit]
+Description=player-guard-helper: privileged actions for playerui
+After=player-guard.service
+
+[Service]
+ExecStart=/usr/local/bin/player-guard-helper /etc/player-guard-services.toml /run/player-guard/helper.sock
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

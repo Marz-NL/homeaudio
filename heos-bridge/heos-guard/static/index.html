@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HEOS 5 - Now Playing</title>
+<style>
+  :root {
+    --bg: #f5f5f7; --card: #ffffff; --text: #1a1a1e; --muted: #6b6b73;
+    --border: #e2e2e6; --accent: #3b82f6; --accent-bg: #eaf1ff;
+    --ok: #2fa86a; --ok-bg: #e8f7ef; --muted-bg: #eceef0;
+    --now-bg: #101014; --now-text: #f1f1f3; --now-muted: #9d9da5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16161a; --card: #232328; --text: #f1f1f3; --muted: #9a9aa2;
+      --border: #333338; --accent: #5b9bff; --accent-bg: #1c2b46;
+      --ok-bg: #16321f; --muted-bg: #2a2a2f;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #16161a; --card: #232328; --text: #f1f1f3; --muted: #9a9aa2;
+    --border: #333338; --accent: #5b9bff; --accent-bg: #1c2b46;
+    --ok-bg: #16321f; --muted-bg: #2a2a2f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding-inline: 16px; padding-block: 24px 48px;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .shell { max-width: 780px; margin: 0 auto; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; gap: 12px; }
+  .app-title { font-size: 1.5rem; font-weight: 700; margin: 0; text-wrap: balance; }
+  .theme-toggle {
+    width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--border);
+    background: var(--card); color: var(--text); cursor: pointer; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .theme-toggle svg { width: 18px; height: 18px; }
+
+  /* Pane: connection status + history on the left, Now Playing on the right */
+  .pane { display: flex; gap: 24px; align-items: flex-start; }
+  .pane-left { flex: 0 0 320px; width: 320px; }
+  .pane-right { flex: 1 1 auto; min-width: 0; }
+  @media (max-width: 680px) {
+    .pane { flex-direction: column; }
+    .pane-left { flex-basis: auto; width: 100%; }
+    .pane-right { order: -1; width: 100%; }
+  }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 13px 16px; margin-bottom: 10px;
+  }
+  .card-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .card-name { font-weight: 500; }
+  .card-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .badge {
+    font-size: 0.75rem; font-weight: 500; padding: 3px 9px; border-radius: 999px;
+    display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; white-space: nowrap;
+  }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .badge.off { background: var(--border); color: var(--muted); }
+  .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .badge-detail { font-size: 0.72rem; color: var(--muted); margin-top: 4px; }
+
+  .disclosure-btn {
+    font: inherit; font-size: 0.78rem; color: var(--muted); background: none;
+    border: none; cursor: pointer; display: inline-flex; align-items: center;
+    gap: 4px; padding: 2px 4px; flex-shrink: 0;
+  }
+  .disclosure-btn .triangle { display: inline-block; transition: transform 0.15s ease; font-size: 0.7em; }
+  .disclosure-btn[aria-expanded="true"] .triangle { transform: rotate(90deg); }
+  .log-panel {
+    margin-top: 10px; background: #0c0c0f; color: #d7d7dc; border-radius: 10px;
+    padding: 10px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.76rem; line-height: 1.5; max-height: 220px; overflow-y: auto;
+    white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+
+  .now-hero {
+    background: var(--now-bg); color: var(--now-text); border-radius: 20px;
+    padding: 24px; display: flex; align-items: center; gap: 20px; min-height: 160px;
+  }
+  .now-hero.idle { color: var(--now-muted); font-size: 1rem; justify-content: center; }
+  .now-hero .cover {
+    width: 100px; height: 100px; border-radius: 14px; flex-shrink: 0;
+    background: linear-gradient(135deg, #4a3b7a, #7a4b8f);
+    display: flex; align-items: center; justify-content: center; font-size: 2.2rem;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.35); overflow: hidden;
+  }
+  .now-hero .cover img { width: 100%; height: 100%; object-fit: cover; }
+  .now-hero .now-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .now-hero .now-track { font-size: 1.2rem; font-weight: 700; text-wrap: balance; }
+  .now-hero .now-album,
+  .now-hero .now-artist { color: var(--now-muted); font-size: 0.95rem; }
+  .now-hero .now-source {
+    color: var(--now-muted); font-size: 0.8rem; margin-top: 8px;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .now-hero .now-source .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  .now-hero .now-source .dot.play { background: var(--ok); }
+
+  .volume-row {
+    margin-top: 14px; display: flex; align-items: center; justify-content: space-between;
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 12px 16px; font-size: 0.85rem; color: var(--muted);
+  }
+  .stale { color: var(--muted); font-size: 0.78rem; margin-top: 14px; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <div class="topbar">
+      <h1 class="app-title">HEOS 5</h1>
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle light/dark theme" title="Toggle light/dark theme"></button>
+    </div>
+
+    <div class="pane">
+      <div class="pane-left">
+        <div class="card">
+          <div class="card-row">
+            <div class="card-name">HEOS Speaker</div>
+            <div class="card-right"><span class="badge off" id="heosBadge"><span class="dot"></span>-</span></div>
+          </div>
+          <div class="badge-detail" id="heosDetail"></div>
+        </div>
+        <div class="card">
+          <div class="card-row">
+            <div class="card-name">Qobuz Bridge</div>
+            <div class="card-right"><span class="badge off" id="qobuzBadge"><span class="dot"></span>-</span></div>
+          </div>
+          <div class="badge-detail" id="qobuzDetail"></div>
+        </div>
+        <div class="volume-row">
+          <span>Volume</span>
+          <span id="volume">-</span>
+        </div>
+
+        <div class="card">
+          <div class="card-row">
+            <div class="card-name">Source history</div>
+            <div class="card-right">
+              <button class="disclosure-btn" id="logToggle" aria-expanded="false">
+                <span class="triangle">&#9656;</span>Log
+              </button>
+            </div>
+          </div>
+          <div class="log-panel" id="logPanel" hidden></div>
+        </div>
+      </div>
+
+      <div class="pane-right">
+        <div class="now-hero" id="hero">
+          <div class="cover" id="cover">&#127925;</div>
+          <div class="now-text">
+            <div class="now-track" id="song">-</div>
+            <div class="now-artist" id="artist"></div>
+            <div class="now-album" id="album"></div>
+            <div class="now-source"><span class="dot" id="dot"></span><span id="source">-</span></div>
+          </div>
+        </div>
+        <div class="stale" id="stale"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+let logOpen = false;
+
+function connBadge(el, detailEl, conn, offlineFallback) {
+  if (!conn) {
+    el.className = "badge off";
+    el.innerHTML = `<span class="dot"></span>${offlineFallback}`;
+    detailEl.textContent = "";
+    return;
+  }
+  el.className = "badge " + (conn.connected ? "ok" : "off");
+  el.innerHTML = `<span class="dot"></span>${conn.connected ? "Connected" : "Offline"}`;
+  detailEl.textContent = conn.connected ? "" : (conn.detail || "");
+}
+
+async function poll() {
+  try {
+    const res = await fetch("/api/status", { cache: "no-store" });
+    const data = await res.json();
+    const playing = data.play_state === "play";
+    const conns = data.connections || {};
+
+    connBadge(document.getElementById("heosBadge"), document.getElementById("heosDetail"), conns.heos, "speaker not found");
+    connBadge(document.getElementById("qobuzBadge"), document.getElementById("qobuzDetail"), conns.qobuz_proxy, "driver not connected");
+
+    document.getElementById("hero").classList.toggle("idle", !playing);
+    document.getElementById("dot").classList.toggle("play", playing);
+    document.getElementById("source").textContent = data.source || (data.status === "error" ? "Unreachable" : "-");
+    document.getElementById("song").textContent = data.song || (playing ? "(no title)" : "Nothing playing");
+    document.getElementById("artist").textContent = data.artist || "";
+    document.getElementById("album").textContent = data.album || "";
+    document.getElementById("volume").textContent = data.volume != null ? `${data.volume}%` : "-";
+
+    const cover = document.getElementById("cover");
+    if (data.album_art_url) {
+      cover.innerHTML = `<img src="${data.album_art_url}" alt="">`;
+    } else {
+      cover.textContent = "\u{1F3B5}";
+    }
+
+    if (logOpen) {
+      const panel = document.getElementById("logPanel");
+      const lines = (data.log || []).map(e => `${new Date(e.ts * 1000).toLocaleTimeString()}  ${e.message}`);
+      panel.textContent = lines.length ? lines.join("\n") : "No source changes yet.";
+    }
+
+    const age = data.updated_at ? Math.round(Date.now() / 1000 - data.updated_at) : null;
+    document.getElementById("stale").textContent = age != null ? `Updated ${age}s ago` : "";
+  } catch (e) {
+    document.getElementById("source").textContent = "Unreachable";
+  }
+}
+poll();
+setInterval(poll, 3000);
+
+const logToggle = document.getElementById("logToggle");
+const logPanel = document.getElementById("logPanel");
+logToggle.addEventListener("click", () => {
+  logOpen = logPanel.hidden; // opening now iff it was hidden
+  logPanel.hidden = !logOpen;
+  logToggle.setAttribute("aria-expanded", String(logOpen));
+  if (logOpen) poll();
+});
+
+// Light/dark toggle - same pattern as playerui/dashboard-hub: auto-follows
+// the OS by default, an explicit click remembers an override in this browser.
+const SUN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>';
+const MOON_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+function effectiveTheme() {
+  const explicit = document.documentElement.getAttribute("data-theme");
+  if (explicit) return explicit;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+function updateThemeIcon() {
+  document.getElementById("themeToggle").innerHTML = effectiveTheme() === "dark" ? SUN_SVG : MOON_SVG;
+}
+function initTheme() {
+  try {
+    const saved = localStorage.getItem("theme");
+    if (saved === "light" || saved === "dark") document.documentElement.setAttribute("data-theme", saved);
+  } catch {}
+  updateThemeIcon();
+}
+document.getElementById("themeToggle").addEventListener("click", () => {
+  const next = effectiveTheme() === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  try { localStorage.setItem("theme", next); } catch {}
+  updateThemeIcon();
+});
+initTheme();
+</script>
+</body>
+</html>

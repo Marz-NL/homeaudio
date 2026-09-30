@@ -1,0 +1,11 @@
+#!/bin/sh
+D=/run/player-guard
+echo "$(date +%T) $QBZ_EVENT $QBZ_STATE" >> $D/qobuz-hook.log
+case "$QBZ_EVENT:$QBZ_STATE" in
+  PlaybackStateChanged:loading|PlaybackStateChanged:playing|TrackStarted:*)
+    touch $D/qobuz-active
+    echo qobuz > $D/audio-owner ;;
+  PlaybackStateChanged:stopped)
+    rm -f $D/qobuz-active ;;
+esac
+exit 0

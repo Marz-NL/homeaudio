@@ -1,0 +1,18 @@
+[Unit]
+Description=playerui: web control panel for this room's audio sources
+After=network-online.target player-guard-helper.service
+
+[Service]
+User=playerui
+Group=audioguard
+# Read-only access to player-guard's own journal, for the "guard log" panel.
+SupplementaryGroups=systemd-journal
+ExecStart=/usr/local/bin/playerui /etc/player-guard-services.toml 0.0.0.0:8189
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

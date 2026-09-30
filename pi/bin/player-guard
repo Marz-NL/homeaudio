@@ -1,0 +1,393 @@
+#!/bin/bash
+# Last one wins, ask politely, never crash a connection. See player-guard.sh (installer).
+. /etc/player-guard.env
+D=/run/player-guard
+OWN=$D/audio-owner
+STATUS=/proc/asound/$USB_CARD/pcm0p/sub0/status
+[ -e $OWN ] || : > $OWN
+chmod 666 $OWN
+
+# Time with milliseconds in the line itself, also for views without journald's stamp
+log() {
+  local t=$EPOCHREALTIME us
+  us=${t#*.}
+  printf '%(%H:%M:%S)T.%s guard: %s\n' "${t%.*}" "${us:0:3}" "$*"
+}
+
+# The DAC's ALSA status, read by bash itself: these checks run every second
+dac_status() { DAC_STATUS=; read -r -d '' DAC_STATUS 2>/dev/null < "$STATUS"; }
+dac_free() { dac_status; [[ $DAC_STATUS == *closed* ]]; }
+
+# The playback device node of the DAC, e.g. /dev/snd/pcmC0D0p
+CARDNUM=$(basename "$(readlink -f /proc/asound/$USB_CARD)" | tr -dc '0-9')
+PCM=/dev/snd/pcmC${CARDNUM}D0p
+
+# Which source holds the DAC right now: ma | qobuz | spotify | airplay | none
+# Asks the kernel which process has the device open (fuser). The owner_pid in
+# the ALSA status is not reliable: it can be a thread that no longer exists.
+dac_holder() {
+  dac_free && { echo none; return; }
+  local pid comm
+  pid=$(fuser "$PCM" 2>/dev/null | awk '{gsub(/[^0-9]/, "", $1); print $1}')
+  comm=$(cat /proc/$pid/comm 2>/dev/null)
+  case "$comm" in
+    pibuz*)      echo qobuz ;;
+    spotifyd*)   echo spotify ;;
+    shairport*)  echo airplay ;;
+    sendspin*|python*) echo ma ;;   # Music Assistant's sendspin runs as python
+    "")          echo none ;;
+    *)           echo other ;;     # something this guard doesn't manage
+  esac
+}
+
+# ---- polite stops
+release_ma() {
+  [ -n "${MA_URL:-}" ] || return 0
+  log "asking Music Assistant to stop"
+  /usr/local/bin/ma-stop
+}
+release_qobuz() {
+  log "asking Qobuz Connect to pause"
+  rm -f $D/qobuz-active
+  runuser -u "$PIBUZ_USER" -- pibuz pause >/dev/null 2>&1
+}
+# Spotify Connect (spotifyd) is controlled over D-Bus (MPRIS, system bus)
+spotify_cmd() {
+  local pid; pid=$(pidof spotifyd) || return 0
+  dbus-send --system --print-reply --dest=org.mpris.MediaPlayer2.spotifyd.instance$pid \
+    /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.$1 >/dev/null 2>&1
+}
+release_spotify() {
+  log "asking Spotify to pause"
+  rm -f $D/spotify-active
+  spotify_cmd Pause
+}
+release_airplay() {
+  [ -e $D/airplay-active ] || return 0
+  rm -f $D/airplay-active
+  log "ending the AirPlay session (AirPlay has no polite stop)"
+  systemctl restart shairport-sync
+}
+
+# ---- volume: the sources share the DAC's hardware mixer ([volume] in the manifest)
+#   mode = "shared"      the level stays where it was when the source changes
+#   mode = "per_source"  each source gets back the level it had when it last played
+#   software_sources     sources that only have their own software volume (pibuz):
+#                        while one plays, the mixer sits at the top of its range, so
+#                        its own slider is the real volume. They are left out of the
+#                        levels above; the next hardware source gets its level back
+#                        before it starts.
+#   software_sources_follow = true
+#                        software sources share the one level instead: taking over,
+#                        their own volume is set to the mixer's dB level; handing
+#                        over, the mixer gets their level. Exact only with a linear
+#                        software curve (pibuz: audio.volume_curve = linear).
+# Without mixer_card + mixer_control the guard leaves the volume alone.
+MANIFEST=${PLAYER_GUARD_MANIFEST:-/etc/player-guard-services.toml}
+VOLDIR=/var/lib/player-guard/volume
+mkdir -p $VOLDIR
+
+# Value of key $1 in the manifest's [volume] table, quotes stripped
+volcfg() {
+  awk -v k="$1" '
+    /^[[:space:]]*\[/ { s = ($0 ~ /^[[:space:]]*\[volume\][[:space:]]*$/); next }
+    s && $0 ~ "^[[:space:]]*" k "[[:space:]]*=" {
+      sub(/^[^=]*=[[:space:]]*/, "")
+      if (substr($0, 1, 1) == "\"") { $0 = substr($0, 2); sub(/".*$/, "") }
+      else { sub(/[[:space:]]*#.*$/, ""); sub(/[[:space:]]+$/, "") }
+      print; exit
+    }' "$MANIFEST" 2>/dev/null
+}
+VOL_MODE=$(volcfg mode); VOL_MODE=${VOL_MODE:-shared}
+VOL_CARD=$(volcfg mixer_card)
+VOL_CONTROL=$(volcfg mixer_control)
+VOL_SOFT=" $(volcfg software_sources | tr -d '[]",') "
+VOL_FOLLOW=$(volcfg software_sources_follow)
+VOL_KEEP=
+
+vol_enabled() { [ -n "$VOL_CARD" ] && [ -n "$VOL_CONTROL" ]; }
+vol_is_soft() { [[ $VOL_SOFT == *" $1 "* ]]; }
+vol_follow() { [ "$VOL_FOLLOW" = true ]; }
+vol_get_db() {
+  amixer -D "$VOL_CARD" sget "$VOL_CONTROL" 2>/dev/null |
+    awk '!/Limits/ && match($0, /\[-?[0-9.]+dB\]/) { print substr($0, RSTART + 1, RLENGTH - 4); exit }'
+}
+vol_set_db() { amixer -q -D "$VOL_CARD" sset "$VOL_CONTROL" -- "${1}dB" 2>/dev/null; }
+# Linear software volume <-> dB. 1% (-40 dB) is the quietest a software source can follow.
+pct_from_db() { awk -v d="$1" 'BEGIN { p = int(100 * 10 ^ (d / 20) + 0.5); print (p < 1 ? 1 : p > 100 ? 100 : p) }'; }
+db_from_pct() { awk -v p="$1" 'BEGIN { if (p <= 0) print -200; else printf "%.2f\n", 20 * log(p / 100) / log(10) }'; }
+# The software sources' own volume, 0-100
+soft_vol_get() {
+  case "$1" in
+    qobuz) runuser -u "$PIBUZ_USER" -- pibuz volume 2>/dev/null | grep -oE '[0-9]+' | head -1 ;;
+  esac
+}
+soft_vol_set() {
+  case "$1" in
+    qobuz) runuser -u "$PIBUZ_USER" -- pibuz volume "$2" >/dev/null 2>&1 ;;
+  esac
+}
+# Raw mixer steps, not %: the sources use different volume curves
+vol_get() {
+  amixer -D "$VOL_CARD" sget "$VOL_CONTROL" 2>/dev/null |
+    awk '!/Limits/ && match($0, /Playback [0-9]+ \[/) { split(substr($0, RSTART, RLENGTH), a, " "); print a[2]; exit }'
+}
+vol_top() { amixer -D "$VOL_CARD" sget "$VOL_CONTROL" 2>/dev/null | awk '/Limits:/ { print $NF; exit }'; }
+vol_set() { amixer -q -D "$VOL_CARD" sset "$VOL_CONTROL" "$1" 2>/dev/null; }
+
+# Start of a handover, while the mixer still holds the outgoing source's level.
+# $1 = outgoing source, $2 = newcomer
+vol_before() {
+  vol_enabled || return 0
+  case "$1" in ma|qobuz|spotify|airplay) ;; *) VOL_KEEP=$(cat $VOLDIR/hw 2>/dev/null); return 0 ;; esac
+  if vol_is_soft "$1"; then
+    local p db
+    if vol_follow && ! vol_is_soft "$2" && p=$(soft_vol_get "$1") && [ -n "$p" ]; then
+      # its own volume is the shared level: put that on the mixer
+      db=$(db_from_pct "$p")
+      log "volume: mixer to $db dB ($1 was at $p%) before $2 starts"
+      vol_set_db "$db"
+      VOL_KEEP=$(vol_get)
+      [ -n "$VOL_KEEP" ] && echo "$VOL_KEEP" > $VOLDIR/hw
+      return 0
+    fi
+    # the mixer is at the top for it; the shared level is the last hardware one
+    VOL_KEEP=$(cat $VOLDIR/hw 2>/dev/null)
+    if ! vol_is_soft "$2" && [ -n "$VOL_KEEP" ]; then
+      log "volume: mixer back to $VOL_KEEP before $2 starts"
+      vol_set "$VOL_KEEP"
+    fi
+  else
+    VOL_KEEP=$(vol_get)
+    [ -n "$VOL_KEEP" ] && { echo "$VOL_KEEP" > $VOLDIR/$1; echo "$VOL_KEEP" > $VOLDIR/hw; }
+  fi
+}
+# Mixer to the top for software source $1, unless another source holds the DAC
+vol_soft_top() {
+  vol_enabled || return 0
+  local h top
+  h=$(dac_holder)
+  [ "$h" = none ] || [ "$h" = "$1" ] || return 0
+  top=$(vol_top)
+  [ -n "$top" ] && [ "$(vol_get)" != "$top" ] || return 0
+  if vol_follow; then
+    # carry the mixer's level over: its own volume first, so it never gets louder
+    local db p
+    db=$(vol_get_db)
+    p=$(pct_from_db "$db")
+    log "volume: $1 to $p% (the mixer's $db dB), mixer to the top ($top)"
+    soft_vol_set "$1" "$p"
+  else
+    log "volume: mixer to the top ($top) for $1, its own volume applies"
+  fi
+  vol_set "$top"
+}
+# Once the newcomer plays. A hardware source sets its own level when it opens
+# the DAC, so wait for that first.
+vol_after() {
+  vol_enabled || return 0
+  local want
+  vol_is_soft "$1" && { vol_soft_top "$1"; return 0; }
+  case "$VOL_MODE" in
+    shared)     want=$VOL_KEEP ;;
+    per_source) want=$(cat $VOLDIR/$1 2>/dev/null || cat $VOLDIR/hw 2>/dev/null) ;;
+    *)          log "unknown volume mode '$VOL_MODE', leaving the volume alone"; return 0 ;;
+  esac
+  [ -n "$want" ] || return 0
+  sleep 1
+  [ "$(vol_get)" = "$want" ] && return 0
+  log "volume ($VOL_MODE): mixer back to $want for $1"
+  vol_set "$want"
+}
+
+# ---- nudges, when the newcomer's first attempt hit a busy DAC
+nudge() {
+  case "$1" in
+    ma)    [ -n "${MA_URL:-}" ] || return 0
+           log "Music Assistant was silent, pause + play"
+           /usr/local/bin/ma-pause; sleep 0.3; /usr/local/bin/ma-play ;;
+    qobuz) log "Qobuz Connect was silent, pause + play"
+           runuser -u "$PIBUZ_USER" -- pibuz pause >/dev/null 2>&1; sleep 0.3
+           runuser -u "$PIBUZ_USER" -- pibuz play >/dev/null 2>&1 ;;
+    spotify) log "Spotify was silent, pause + play"
+             spotify_cmd Pause; sleep 0.3; spotify_cmd Play ;;
+    airplay) : ;;   # its hook waits for the DAC by itself
+  esac
+}
+
+# $1 = new owner, $2 = previous owner (whose level counts when the DAC is idle)
+handover() {
+  VOL_KEEP=
+  take_dac "$1" "$2"
+  [ "$(dac_holder)" = "$1" ] || return 0
+  if vol_is_soft "$1" || [ -n "$VOL_KEEP" ]; then vol_after "$1"; fi
+}
+
+take_dac() {
+  local new=$1 holder i
+  holder=$(dac_holder)
+  log "new owner: $new (DAC held by: $holder)"
+  [ "$holder" = "$new" ] && return      # it already plays, nothing to do
+  if [ "$holder" = none ]; then vol_before "$2" "$new"; else vol_before "$holder" "$new"; fi
+
+  # 1. ask the current holder to let go
+  case "$holder" in
+    ma)      release_ma ;;
+    qobuz)   release_qobuz ;;
+    spotify) release_spotify ;;
+    airplay) release_airplay ;;
+    other)   log "WARNING: a program this guard doesn't manage holds the DAC: $(fuser -v "$PCM" 2>&1 | awk 'NR > 1 {print $NF}' | sort -u | tr '\n' ' ')" ;;
+  esac
+  # a paused/idle source may not hold the DAC but still be "active"
+  [ "$new" != airplay ] && release_airplay
+  [ "$new" != qobuz ] && [ -e $D/qobuz-active ] && release_qobuz
+  [ "$new" != spotify ] && [ -e $D/spotify-active ] && release_spotify
+
+  # 2. wait up to 6 s until the DAC is free or already taken by the newcomer
+  for i in $(seq 1 60); do
+    holder=$(dac_holder)
+    [ "$holder" = "$new" ] && { log "$new is playing"; return; }
+    [ "$holder" = none ] && break
+    sleep 0.1
+  done
+  if [ "$holder" != none ]; then
+    log "WARNING: $holder did not release the DAC in 6 s; leaving it alone"
+    return
+  fi
+
+  # 3. give the newcomer a moment to get the DAC by itself, then nudge
+  for i in $(seq 1 8); do
+    [ "$(dac_holder)" = "$new" ] && { log "$new is playing"; return; }
+    sleep 0.1
+  done
+  nudge "$new"
+  for i in $(seq 1 30); do
+    holder=$(dac_holder); [ "$holder" = "$new" ] && break; sleep 0.1
+  done
+  [ "$holder" = "$new" ] && log "$new is playing" || log "WARNING: $new still silent (DAC: $holder)"
+}
+
+# Music Assistant starting a stream (only when installed)
+if systemctl cat sendspin >/dev/null 2>&1; then
+  journalctl -u sendspin -f -n 0 -o cat | while read -r line; do
+    case "$line" in *"Stream started"*) echo ma > $OWN ;; esac
+  done &
+fi
+
+# Qobuz Connect wanting the DAC while it is busy (a resume sends no event then)
+if [ -n "${PIBUZ_UNIT:-}" ]; then
+  journalctl -u "$PIBUZ_UNIT" -f -n 0 -o cat | while read -r line; do
+    case "$line" in
+      *"Device or resource busy"*|*"cannot resume"*|*"Cannot acquire device"*)
+        touch $D/qobuz-active; echo qobuz > $OWN ;;
+    esac
+  done &
+fi
+
+# A source that opened the DAC but never started playing blocks everyone.
+# After 10 s of that, ask it to let go (Qobuz: restart if it does not respond).
+dac_stuck() { dac_status; [[ $DAC_STATUS == *"state: PREPARED"* ]]; }
+unstick() {
+  local h; h=$(dac_holder)
+  log "DAC stuck: opened by $h but not playing for 10 s"
+  case "$h" in
+    qobuz)   release_qobuz; sleep 3
+             if dac_stuck && [ "$(dac_holder)" = qobuz ]; then
+               log "Qobuz Connect did not let go, restarting it"
+               systemctl restart "$PIBUZ_UNIT"
+             fi ;;
+    spotify) release_spotify; sleep 3
+             if dac_stuck && [ "$(dac_holder)" = spotify ]; then
+               log "Spotify did not let go, restarting it"
+               systemctl restart spotifyd
+             fi ;;
+    airplay) log "ending the stuck AirPlay session"
+             rm -f $D/airplay-active; systemctl restart shairport-sync ;;
+    *)       log "leaving it alone (Music Assistant may just be paused)" ;;
+  esac
+}
+
+# Spotify Connect wanting the DAC while it is busy (only when installed)
+if systemctl cat spotifyd >/dev/null 2>&1; then
+  journalctl -u spotifyd -f -n 0 -o cat | while read -r line; do
+    case "$line" in
+      *"Device or resource busy"*|*"Already in Use"*)
+        touch $D/spotify-active; echo spotify > $OWN ;;
+    esac
+  done &
+fi
+
+# Wake on every write to the owner file, otherwise once a second for the
+# stuck check. Without inotify-tools: poll, with a fifo that never gets data
+# as a sleep that starts no process.
+if command -v inotifywait >/dev/null; then
+  exec {WAKE}< <(inotifywait -mq -e close_write --format x "$OWN")
+  TICK=1
+else
+  log "inotifywait not found (inotify-tools), polling instead"
+  [ -p $D/tick ] || mkfifo -m 600 $D/tick
+  exec {WAKE}<>$D/tick
+  TICK=0.1
+fi
+
+last=; read -r last < $OWN
+stuck_since=
+busy_holder=
+if vol_enabled; then
+  log "started: owner '$last', volume $VOL_MODE on $VOL_CARD '$VOL_CONTROL', software sources:${VOL_SOFT% }$(vol_follow && echo ' (following the shared level)')"
+  if vol_follow && vol_is_soft qobuz; then
+    curve=$(runuser -u "$PIBUZ_USER" -- pibuz settings show 2>/dev/null | awk '$1 == "audio.volume_curve" { print $3 }')
+    [ "$curve" = linear ] || log "WARNING: pibuz volume_curve is '$curve', not linear: Qobuz will not match the shared level exactly"
+  fi
+else
+  log "started: owner '$last', volume not managed (no mixer in $MANIFEST)"
+fi
+
+# First run: remember the current level for the hardware sources, unless a
+# software source already set the mixer to the top. Then apply the rule for
+# whatever plays right now.
+if vol_enabled; then
+  if [ ! -e $VOLDIR/hw ] && [ "$(vol_get)" != "$(vol_top)" ]; then vol_get > $VOLDIR/hw; fi
+  vol_is_soft "$last" && vol_soft_top "$last"
+fi
+while :; do
+  read -r -t $TICK -u $WAKE _; rc=$?
+  if [ $rc -ne 0 ] && [ $rc -le 128 ]; then     # not a timeout: the watcher died
+    log "owner watch ended, exiting so systemd restarts the guard"
+    exit 1
+  fi
+  while read -r -t 0 -u $WAKE; do read -r -u $WAKE _; done   # a burst of writes is one wake
+
+  # A stuck source only matters when another one wants the DAC. Unsticking the
+  # chosen source itself would end its session (Qobuz Connect then hands the
+  # stream back to the phone) while it may still recover, e.g. a mid-track start.
+  if dac_stuck; then stuck_since=${stuck_since:-$SECONDS}; else stuck_since=; fi
+  if [ -n "$stuck_since" ] && [ $((SECONDS - stuck_since)) -ge 10 ]; then
+    [ "$(dac_holder)" != "$last" ] && unstick
+    stuck_since=
+  fi
+
+  # Log only, no effect on arbitration: the DAC went free without a new owner
+  # claiming it - the source stopped on its own (playlist ended, or paused
+  # from its own app). Also fires right before a handover's "new owner".
+  # Which source held it is looked up once per busy period, not every tick.
+  if dac_free; then
+    [ -n "$busy_holder" ] && log "$busy_holder released the DAC"
+    busy_holder=
+  elif [ -z "$busy_holder" ]; then
+    busy_holder=$(dac_holder)
+  fi
+
+  now=; read -r now < $OWN
+  if [ -n "$now" ] && [ "$now" = "$last" ]; then
+    # Same owner announcing itself again, e.g. Qobuz resuming: no handover,
+    # but a software source still needs the mixer at the top before it plays
+    [ $rc -eq 0 ] && vol_is_soft "$now" && vol_soft_top "$now"
+    continue
+  fi
+  [ -z "$now" ] && continue
+  prev=$last
+  last=$now
+  handover "$now" "$prev"
+  busy_holder=     # the DAC may have changed hands without being free at a tick
+done

@@ -20,7 +20,7 @@ permissions:
 
 env:
   SPOTIFYD_VERSION: v0.4.2   # keep in sync with lib/sources/spotify.sh
-  PIBUZ_VERSION: v2.5.1      # keep in sync with lib/sources/qobuz.sh (pibuz publishes no binaries)
+  PIBUZ_COMMIT: 8184ba3c491bf6ccbecc4c138f0a20ae3bb3d212   # 2.6.0; keep in sync with lib/sources/qobuz.sh (pibuz publishes no binaries)
   ALSA_CDSP_COMMIT: 1a1b0a3e452f87372881ffaa9391a11d0ff6d541   # keep in sync with lib/output.sh
 
 jobs:
@@ -53,9 +53,10 @@ jobs:
           cd /tmp/spotifyd
           cargo build --release --locked --no-default-features --features alsa_backend,dbus_mpris
 
-      - name: pibuz (upstream tag, unchanged)
+      - name: pibuz (upstream commit, unchanged)
         run: |
-          git clone -q --depth 1 --branch "$PIBUZ_VERSION" https://github.com/PhilipVinc/pibuz /tmp/pibuz
+          git clone -q https://github.com/PhilipVinc/pibuz /tmp/pibuz
+          git -C /tmp/pibuz checkout -q "$PIBUZ_COMMIT"
           cd /tmp/pibuz
           cargo build --release --locked -p pibuz
 

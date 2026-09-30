@@ -21,6 +21,13 @@ Denon/Marantz **HEOS** speaker into Qobuz Connect too.
   the web page, without interrupting the music.
 - **No cloud, no accounts** beyond the ones your apps already use.
 
+> **Status: beta.** Runs daily in two rooms and a studio here, on Raspberry
+> Pi OS (trixie, 64-bit) with an E30 USB DAC, a HiFiBerry DAC+ and a
+> HiFiBerry Digi+ Pro (S/PDIF). Qobuz, AirPlay 2 and Music Assistant are
+> tested the most; Spotify works but has seen less testing, the sample-rate
+> converter is new. Bug reports welcome - `sudo ./install.sh doctor` output
+> helps.
+
 ## Quick start: a room
 
 You need a Raspberry Pi 4/5 (or 3B+) with a USB DAC or a DAC/S/PDIF HAT, and
@@ -48,6 +55,8 @@ Afterwards:
   (see below).
 - Change answers: `sudo ./install.sh room --reconfigure`
 - See what it would do first: `sudo ./install.sh room --dry-run`
+- Remove it all again: `sudo ./install.sh uninstall` (`--purge` also forgets
+  the answers and the apps' logins)
 
 Answers are kept in `/etc/homeaudio/install.conf`, so re-running (e.g. after
 `git pull`) updates without asking again. Everything the installer did is in
@@ -56,9 +65,10 @@ Answers are kept in `/etc/homeaudio/install.conf`, so re-running (e.g. after
 ### Music Assistant
 
 Optional, and installed by you (see [music-assistant.io](https://music-assistant.io)).
-Say yes to it during `install.sh room` (or `install.sh add ma` later), give
-its address and a long-lived token (Settings > Profile), and the room shows
-up in Music Assistant as a player.
+The installer looks for it on the network and offers to connect the room; or
+later, use "Set up" on the web page's Music Assistant card (or
+`install.sh add ma`). You need a long-lived token from Music Assistant
+(Settings > Profile). The room then shows up in Music Assistant as a player.
 
 ### Output rate (studio)
 
@@ -99,6 +109,7 @@ Makes a HEOS speaker a Qobuz Connect device, on a homelab or on a Pi.
 > Marantz/Denon amplifiers with HEOS built in) speak the same HEOS CLI
 > protocol, so they may well work, but nobody has tried yet. If you do, an
 > issue saying how it went - working or not - is very welcome.
+
 `install.sh heos` (also without Docker) is coming; for now, with Docker:
 
 ```
@@ -131,7 +142,27 @@ shows what the speaker plays, whichever app started it.
 | `pi/jobs/` | what playerui's "Add a source", Music Assistant and Output cards run |
 | `webui/` | playerui, player-guard-helper, the hub container ([README](webui/README.md)) |
 | `heos-bridge/` | qobuz-proxy with HEOS support + heos-guard |
-| `patches/` | the spotifyd linear-volume patch used for the prebuilt binary |
+| `patches/` | what the prebuilt binaries change upstream: spotifyd (linear volume), alsa_cdsp (stream restarts) |
+
+## Security
+
+The web page and its API have no login, by design - like the apps' own
+Connect protocols, they trust the local network. Keep port 8189 off the
+internet. Privileged actions go through a small root helper that only allows
+a fixed list of things (see [webui/README.md](webui/README.md)).
+
+## Credits
+
+homeaudio mostly glues together other people's excellent work:
+[pibuz](https://github.com/PhilipVinc/pibuz) (Qobuz Connect),
+[spotifyd](https://github.com/Spotifyd/spotifyd),
+[shairport-sync](https://github.com/mikebrady/shairport-sync) and
+[nqptp](https://github.com/mikebrady/nqptp) (AirPlay 2),
+[sendspin](https://github.com/Sendspin/sendspin-python-cli) and
+[Music Assistant](https://github.com/music-assistant/server),
+[CamillaDSP](https://github.com/HEnquist/camilladsp) and
+[alsa_cdsp](https://github.com/scripple/alsa_cdsp), and
+[qobuz-proxy](https://github.com/leolobato/qobuz-proxy) for the HEOS bridge.
 
 ## Licenses
 

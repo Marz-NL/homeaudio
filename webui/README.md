@@ -37,7 +37,8 @@ process can't turn into more than what the helper's own allowlists permit.
   appends its `[[service]]` entry itself (via `toml_edit`, keeping the rest of
   the file's formatting).
 - `config/hub.example.toml` + `docker/` - the hub: the same page on any Docker
-  host, listing every room and running nothing else (`install.sh hub`).
+  host, listing every room and running nothing else (`install.sh hub` is
+  coming; see the main README for the Docker steps).
 
 ## Run locally
 

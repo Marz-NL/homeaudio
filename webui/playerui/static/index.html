@@ -153,6 +153,7 @@
   }
   .form-actions { display: flex; gap: 8px; margin-top: 4px; }
   .form-error { color: var(--danger); font-size: 0.82rem; }
+  .hint { color: var(--muted); font-size: 0.82rem; margin: 4px 0; }
 
   /* Job log */
   .log-panel {
@@ -179,7 +180,7 @@
 
 <script>
 const DAC_LABEL = { ma: "Music Assistant", qobuz: "Qobuz Connect", spotify: "Spotify Connect", airplay: "AirPlay 2", none: "nothing" };
-const JOB_SLUGS = { AddQobuz: "add-qobuz", AddSpotify: "add-spotify", AddAirplay2: "add-airplay2" };
+const JOB_SLUGS = { AddQobuz: "add-qobuz", AddSpotify: "add-spotify", AddAirplay2: "add-airplay2", AddMusicAssistant: "add-ma" };
 // Fixed display order regardless of manifest/array order, so every room's
 // pane reads the same: Music Assistant (rendered separately, always first),
 // then Qobuz, Spotify, AirPlay 2, Player guard last.
@@ -496,12 +497,26 @@ function pollGuardLog(base, panel) {
 }
 
 function renderMusicAssistantCard(base, data) {
-  const configured = data.music_assistant.configured;
-  const badge = connectedBadge(configured, "Connected", "Not connected");
-  const btn = document.createElement("button");
-  btn.className = "btn";
-  btn.textContent = configured ? "Reconfigure" : "Set up";
-  const card = serviceRow("Music Assistant", [badge, btn]);
+  const ma = data.music_assistant;
+  const badge = ma.configured
+    ? connectedBadge(true, "Connected", "")
+    : connectedBadge(false, "", ma.installed ? "Not connected" : "Not set up");
+  const right = [badge];
+  let btn = null;
+  if (ma.can_setup) {
+    btn = document.createElement("button");
+    btn.className = "btn";
+    btn.textContent = ma.configured ? "Reconnect" : "Connect";
+    right.push(btn);
+  }
+  const card = serviceRow("Music Assistant", right);
+  if (ma.configured && ma.url) {
+    const note = document.createElement("div");
+    note.className = "hint";
+    note.textContent = ma.url;
+    card.append(note);
+  }
+  if (!btn) return card;
 
   btn.addEventListener("click", () => {
     const existingForm = card.querySelector(".form");
@@ -511,77 +526,64 @@ function renderMusicAssistantCard(base, data) {
       recomputeSuspend();
       return;
     }
-    card.append(buildMusicAssistantForm(base));
+    card.append(buildMusicAssistantForm(base, data.room, card, btn));
     maFormOpen = true;
     recomputeSuspend();
   });
   return card;
 }
 
-function buildMusicAssistantForm(base) {
+// Find the server on the network, paste a fresh token, connect. The rest
+// (sendspin, finding this room's player) is install.sh add ma, run as a job.
+function buildMusicAssistantForm(base, room, card, openBtn) {
   const form = document.createElement("div");
   form.className = "form";
   form.innerHTML = `
-    <label>Music Assistant URL <input type="text" class="ma-url" placeholder="http://192.168.1.50:8095"></label>
-    <label>Long-lived access token <input type="password" class="ma-token"></label>
+    <div class="hint ma-search">Looking for Music Assistant on the network…</div>
+    <label>Music Assistant address <input type="text" class="ma-url" placeholder="http://music-assistant.local:8095"></label>
+    <label>Token <input type="password" class="ma-token" autocomplete="off"></label>
+    <div class="hint">In Music Assistant (not Home Assistant): Settings › Profile ›
+      Long-lived access tokens › create one, and paste it here.</div>
     <div class="form-actions">
-      <button class="btn primary ma-find">Find players</button>
+      <button class="btn primary ma-connect">Connect</button>
     </div>
-    <div class="form-error" hidden></div>
-    <div class="ma-players" hidden>
-      <label>Which player is this room? <select class="ma-select"></select></label>
-      <div class="form-actions"><button class="btn primary ma-connect">Connect</button></div>
-    </div>`;
+    <div class="form-error" hidden></div>`;
   const err = form.querySelector(".form-error");
   const showErr = (msg) => { err.textContent = msg; err.hidden = false; };
+  const urlInput = form.querySelector(".ma-url");
+  const search = form.querySelector(".ma-search");
 
-  form.querySelector(".ma-find").addEventListener("click", async (e) => {
-    err.hidden = true;
-    const url = form.querySelector(".ma-url").value.trim();
-    const token = form.querySelector(".ma-token").value.trim();
-    if (!url || !token) return showErr("URL and token are both required.");
-    e.target.disabled = true;
-    try {
-      const { players } = await fetchJSON(base + "/music-assistant/discover", {
-        method: "POST", body: JSON.stringify({ url, token }),
-      });
-      const select = form.querySelector(".ma-select");
-      select.innerHTML = "";
-      for (const p of players) {
-        const opt = document.createElement("option");
-        opt.value = p.player_id;
-        opt.textContent = `${p.display_name} (${p.provider})`;
-        select.append(opt);
-      }
-      form.querySelector(".ma-players").hidden = players.length === 0;
-      if (!players.length) showErr("Reached Music Assistant, but it has no players yet.");
-    } catch (ex) {
-      showErr(ex.message);
-    } finally {
-      e.target.disabled = false;
+  fetchJSON(base + "/music-assistant/find").then(({ servers }) => {
+    if (!servers.length) {
+      search.textContent = "No Music Assistant found on the network - enter its address.";
+      return;
     }
-  });
+    if (!urlInput.value) urlInput.value = servers[0].url;
+    search.textContent = servers.length === 1
+      ? `Found: ${servers[0].name}`
+      : `Found ${servers.length}: ${servers.map((s) => `${s.name} (${s.url})`).join(", ")}`;
+  }).catch(() => { search.textContent = "Couldn't search the network - enter the address."; });
 
   form.querySelector(".ma-connect").addEventListener("click", async (e) => {
     err.hidden = true;
+    const url = urlInput.value.trim();
+    const token = form.querySelector(".ma-token").value.trim();
+    if (!url || !token) return showErr("The address and a token are both needed.");
     e.target.disabled = true;
+    autoRefreshSuspended = true;
     try {
-      await fetchJSON(base + "/music-assistant/connect", {
-        method: "POST",
-        body: JSON.stringify({
-          url: form.querySelector(".ma-url").value.trim(),
-          token: form.querySelector(".ma-token").value.trim(),
-          player_id: form.querySelector(".ma-select").value,
-        }),
+      await fetchJSON(`${base}/jobs/add-ma`, {
+        method: "POST", body: JSON.stringify({ MA_URL: url, MA_TOKEN: token }),
       });
-      maFormOpen = false;
-      loadAll();
     } catch (ex) {
-      showErr(ex.message);
       e.target.disabled = false;
+      autoRefreshSuspended = maFormOpen;
+      return showErr(`Couldn't start: ${ex.message}`);
     }
+    form.remove();
+    maFormOpen = false;
+    attachJobLog(base, `Music Assistant for ${room}`, card, openBtn, [], 0);
   });
-
   return form;
 }
 
@@ -624,7 +626,7 @@ async function startJob(base, recipe, label, btn, card) {
   btn.disabled = true;
   btn.textContent = "Starting…";
   const slug = JOB_SLUGS[recipe];
-  const params = slug === "add-spotify" ? { BUILD: "1" } : slug === "add-qobuz" ? { BUILD: "1" } : {};
+  const params = {};   // the installer picks prebuilt binaries itself
   try {
     await fetchJSON(`${base}/jobs/${slug}`, { method: "POST", body: JSON.stringify(params) });
   } catch (e) {

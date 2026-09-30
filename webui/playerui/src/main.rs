@@ -4,7 +4,6 @@
 // config, running a build job) to player-guard-helper over a Unix socket.
 // See helper/src/main.rs for what's actually allowed to happen.
 
-mod http_client;
 
 use protocol::{JobRecipe, Request, Response, ServiceVerb};
 use serde::{Deserialize, Serialize};
@@ -30,6 +29,7 @@ struct JobPaths {
     add_qobuz: Option<String>,
     add_spotify: Option<String>,
     add_airplay2: Option<String>,
+    add_ma: Option<String>,
 }
 
 fn default_socket() -> String {
@@ -77,7 +77,14 @@ struct ServiceStatus {
 
 #[derive(Debug, Serialize)]
 struct MaStatus {
+    /// MA_URL, MA_TOKEN and MA_PLAYER are all set
     configured: bool,
+    /// sendspin (this room's Music Assistant player) is installed
+    installed: bool,
+    /// the Music Assistant address, for display
+    url: Option<String>,
+    /// the manifest has an add_ma job, so the page can set it up
+    can_setup: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -149,7 +156,44 @@ fn ma_status(manifest: &Manifest) -> MaStatus {
     let configured = ["MA_URL", "MA_TOKEN", "MA_PLAYER"]
         .iter()
         .all(|k| env.get(*k).is_some_and(|v| !v.is_empty()));
-    MaStatus { configured }
+    MaStatus {
+        configured,
+        installed: std::path::Path::new("/etc/systemd/system/sendspin.service").exists(),
+        url: env.get("MA_URL").filter(|v| !v.is_empty()).cloned(),
+        can_setup: manifest.jobs.add_ma.is_some(),
+    }
+}
+
+// Music Assistant servers on the LAN: they announce _mass._tcp over mDNS with
+// their address in a base_url TXT record. Read-only, no privilege needed.
+fn handle_ma_find() -> tiny_http::ResponseBox {
+    let out = Command::new("timeout")
+        .args(["6", "avahi-browse", "-rtp", "_mass._tcp"])
+        .output();
+    let Ok(out) = out else {
+        return err_json(500, "avahi-browse is missing (apt install avahi-utils)");
+    };
+    let mut servers: Vec<serde_json::Value> = vec![];
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        // =;iface;proto;name;type;domain;host;address;port;"k=v" "k=v" ...
+        let f: Vec<&str> = line.splitn(10, ';').collect();
+        if f.len() < 10 || f[0] != "=" || f[2] != "IPv4" {
+            continue;
+        }
+        let txt = |key: &str| {
+            f[9].split("\" \"")
+                .map(|kv| kv.trim_matches('"'))
+                .find_map(|kv| kv.strip_prefix(&format!("{key}=")))
+                .map(str::to_string)
+        };
+        let url = txt("base_url").unwrap_or_else(|| format!("http://{}:{}", f[7], f[8]));
+        if servers.iter().any(|s| s["url"] == url.as_str()) {
+            continue;
+        }
+        let name = txt("name").unwrap_or_else(|| f[3].to_string());
+        servers.push(serde_json::json!({"name": name, "url": url}));
+    }
+    ok_json(serde_json::json!({"servers": servers}))
 }
 
 fn available_jobs(manifest: &Manifest) -> Vec<AvailableJob> {
@@ -292,12 +336,7 @@ fn main() {
                 handle_service_toggle(&manifest, id, action)
             }
 
-            (Method::Post, "/music-assistant/discover") => {
-                handle_ma_discover(&mut request)
-            }
-            (Method::Post, "/music-assistant/connect") => {
-                handle_ma_connect(&manifest, &mut request)
-            }
+            (Method::Get, "/music-assistant/find") => handle_ma_find(),
 
             (Method::Post, path) if path.starts_with("/jobs/") => {
                 let recipe_name = path.trim_start_matches("/jobs/");
@@ -340,77 +379,6 @@ fn handle_service_toggle(manifest: &Manifest, id: &str, action: &str) -> tiny_ht
     }
 }
 
-fn handle_ma_discover(request: &mut tiny_http::Request) -> tiny_http::ResponseBox {
-    let body = json_body(request);
-    let (Some(url), Some(token)) = (
-        body.get("url").and_then(|v| v.as_str()),
-        body.get("token").and_then(|v| v.as_str()),
-    ) else {
-        return err_json(400, "url and token are required");
-    };
-    let api = format!("{}/api", url.trim_end_matches('/'));
-    let payload = serde_json::json!({"message_id": "playerui", "command": "players/all"});
-    match http_client::post_json(&api, Some(token), &payload) {
-        Ok(resp) => {
-            let list = resp.get("result").cloned().unwrap_or(resp);
-            let players: Vec<serde_json::Value> = list
-                .as_array()
-                .map(|a| {
-                    a.iter()
-                        .map(|p| {
-                            serde_json::json!({
-                                "player_id": p.get("player_id"),
-                                "provider": p.get("provider"),
-                                "display_name": p.get("display_name").or(p.get("name")),
-                            })
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            ok_json(serde_json::json!({"players": players}))
-        }
-        Err(e) => err_json(502, format!("couldn't reach Music Assistant: {e}")),
-    }
-}
-
-fn handle_ma_connect(manifest: &Manifest, request: &mut tiny_http::Request) -> tiny_http::ResponseBox {
-    let body = json_body(request);
-    let (Some(url), Some(token), Some(player_id)) = (
-        body.get("url").and_then(|v| v.as_str()),
-        body.get("token").and_then(|v| v.as_str()),
-        body.get("player_id").and_then(|v| v.as_str()),
-    ) else {
-        return err_json(400, "url, token and player_id are required");
-    };
-    for (key, value) in [("MA_URL", url), ("MA_TOKEN", token), ("MA_PLAYER", player_id)] {
-        let req = Request::WriteConfig {
-            service: "music-assistant".into(),
-            key: key.into(),
-            value: value.into(),
-        };
-        match helper_call(manifest, &req) {
-            Ok(Response::Ok) => {}
-            Ok(Response::Error { message }) => return err_json(500, message),
-            Ok(_) => return err_json(500, "unexpected helper response"),
-            Err(e) => return err_json(500, format!("helper unreachable: {e}")),
-        }
-    }
-    // All three fields are written - now restart player-guard once so it
-    // picks them up, rather than after each individual field.
-    let restart = Request::ServiceAction {
-        unit: "player-guard".into(),
-        action: ServiceVerb::Restart,
-    };
-    match helper_call(manifest, &restart) {
-        Ok(Response::Ok) => ok_json(serde_json::json!({"ok": true})),
-        Ok(Response::Error { message }) => {
-            err_json(500, format!("saved, but couldn't restart player-guard: {message}"))
-        }
-        Ok(_) => err_json(500, "unexpected helper response"),
-        Err(e) => err_json(500, format!("helper unreachable: {e}")),
-    }
-}
-
 fn handle_run_job(
     manifest: &Manifest,
     recipe_name: &str,
@@ -420,6 +388,7 @@ fn handle_run_job(
         "add-qobuz" => JobRecipe::AddQobuz,
         "add-spotify" => JobRecipe::AddSpotify,
         "add-airplay2" => JobRecipe::AddAirplay2,
+        "add-ma" => JobRecipe::AddMusicAssistant,
         _ => return err_json(404, "unknown job recipe"),
     };
     let body = json_body(request);

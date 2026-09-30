@@ -30,6 +30,7 @@ struct JobPaths {
     add_qobuz: Option<String>,
     add_spotify: Option<String>,
     add_airplay2: Option<String>,
+    add_ma: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -207,11 +208,14 @@ fn write_player_guard_env(key: &str, value: &str, path: &str) -> Response {
 // through, so a request can't smuggle arbitrary environment into the build.
 // What a successful recipe run adds to the manifest, so it shows up as a
 // real toggle afterward instead of requiring a manual TOML edit.
-fn recipe_service(recipe: JobRecipe) -> (&'static str, &'static str, &'static str) {
+// The [[service]] toggle a successful job adds. Music Assistant isn't a toggle
+// (sendspin always runs), so it adds none.
+fn recipe_service(recipe: JobRecipe) -> Option<(&'static str, &'static str, &'static str)> {
     match recipe {
-        JobRecipe::AddQobuz => ("pibuz", "Qobuz Connect", "pibuz"),
-        JobRecipe::AddSpotify => ("spotifyd", "Spotify Connect", "spotifyd"),
-        JobRecipe::AddAirplay2 => ("shairport-sync", "AirPlay 2", "shairport-sync"),
+        JobRecipe::AddQobuz => Some(("pibuz", "Qobuz Connect", "pibuz")),
+        JobRecipe::AddSpotify => Some(("spotifyd", "Spotify Connect", "spotifyd")),
+        JobRecipe::AddAirplay2 => Some(("shairport-sync", "AirPlay 2", "shairport-sync")),
+        JobRecipe::AddMusicAssistant => None,
     }
 }
 
@@ -265,6 +269,7 @@ fn run_job(
         JobRecipe::AddQobuz => (manifest.jobs.add_qobuz.as_ref(), &["BUILD", "NAME", "MA_PLAYER"][..]),
         JobRecipe::AddSpotify => (manifest.jobs.add_spotify.as_ref(), &["NAME", "BUILD"][..]),
         JobRecipe::AddAirplay2 => (manifest.jobs.add_airplay2.as_ref(), &["AIRPLAY_NAME"][..]),
+        JobRecipe::AddMusicAssistant => (manifest.jobs.add_ma.as_ref(), &["MA_URL", "MA_TOKEN"][..]),
     };
     let Some(script) = script else {
         return Response::Error {
@@ -310,9 +315,10 @@ fn run_job(
         let status = child.wait();
         let ok = status.map(|s| s.success()).unwrap_or(false);
         if ok {
-            let (id, name, unit) = recipe_service(recipe);
-            if let Err(e) = append_service_to_manifest(&manifest_path, id, name, unit) {
-                eprintln!("job succeeded but couldn't update manifest: {e}");
+            if let Some((id, name, unit)) = recipe_service(recipe) {
+                if let Err(e) = append_service_to_manifest(&manifest_path, id, name, unit) {
+                    eprintln!("job succeeded but couldn't update manifest: {e}");
+                }
             }
         }
         if let Some(j) = job_wait.lock().unwrap().as_mut() {

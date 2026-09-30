@@ -27,6 +27,9 @@ pub enum JobRecipe {
     AddQobuz,
     AddSpotify,
     AddAirplay2,
+    /// Connect the room to Music Assistant: sendspin + the player id, by
+    /// install.sh add ma (needs MA_URL and MA_TOKEN).
+    AddMusicAssistant,
 }
 
 impl JobRecipe {
@@ -35,6 +38,7 @@ impl JobRecipe {
             JobRecipe::AddQobuz => "Qobuz Connect",
             JobRecipe::AddSpotify => "Spotify Connect",
             JobRecipe::AddAirplay2 => "AirPlay 2",
+            JobRecipe::AddMusicAssistant => "Music Assistant",
         }
     }
 }

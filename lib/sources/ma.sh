@@ -4,7 +4,15 @@
 
 src_ma_questions() {
   say "Music Assistant"
-  local tries=0 code url_default=""
+  local tries=0 code url_default
+  # From playerui's form: these win over remembered (possibly wrong) answers
+  [ -n "${MA_URL_GIVEN:-}" ] && MA_URL=${MA_URL_GIVEN%/}
+  [ -n "${MA_TOKEN_GIVEN:-}" ] && MA_TOKEN=$MA_TOKEN_GIVEN
+  url_default=$(ma_discover)
+  [ -n "$url_default" ] && [ -z "${MA_URL:-}" ] && info "found Music Assistant at $url_default"
+  # Given by playerui (or the environment): use them without asking
+  [ -n "${MA_URL:-}" ] && [ -n "$ASSUME_YES" ] && url_default=$MA_URL
+  [ -z "${MA_URL:-}" ] && [ -n "$ASSUME_YES" ] && [ -n "$url_default" ] && MA_URL=$url_default
   while :; do
     ask MA_URL "Music Assistant address, e.g. http://homeassistant.local:8095" "$url_default"
     [ -n "$MA_URL" ] || die "Music Assistant needs its address"
@@ -15,7 +23,11 @@ src_ma_questions() {
     [ -n "$DRY_RUN" ] && return 0
 
     code=$(ma_http_code)
-    [ "$code" = 200 ] && { info "Music Assistant answers at $MA_URL"; return 0; }
+    if [ "$code" = 200 ]; then
+      info "Music Assistant answers at $MA_URL"
+      conf_set MA_URL "$MA_URL"; conf_set MA_TOKEN "$MA_TOKEN"   # keep only answers that work
+      return 0
+    fi
     case "$code" in
       401|403) warn "Music Assistant at $MA_URL rejected that token" ;;
       000)     warn "nothing answers at $MA_URL - check the address and port (usually 8095)" ;;
@@ -30,6 +42,13 @@ src_ma_questions() {
     fi
     info "Try again:"
   done
+}
+
+# The first Music Assistant server announcing itself on the LAN (mDNS _mass._tcp)
+ma_discover() {
+  command -v avahi-browse >/dev/null || return 0
+  timeout 6 avahi-browse -rtp _mass._tcp 2>/dev/null |
+    sed -n 's/^=;[^;]*;IPv4;.*"base_url=\([^"]*\)".*/\1/p' | head -1
 }
 
 # HTTP status of an authenticated players/all call (000: no answer at all)

@@ -52,6 +52,7 @@ toggleable = false   # disabling this breaks DAC arbitration entirely
 add_qobuz = "/opt/homeaudio/pi/jobs/add-qobuz.sh"
 add_spotify = "/opt/homeaudio/pi/jobs/add-spotify.sh"
 add_airplay2 = "/opt/homeaudio/pi/jobs/add-airplay.sh"
+add_ma = "/opt/homeaudio/pi/jobs/add-ma.sh"
 
 # Volume: all hardware-volume sources (sendspin, spotifyd, shairport-sync)
 # drive the DAC's one hardware mixer; player-guard applies the mode when the

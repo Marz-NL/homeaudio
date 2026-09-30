@@ -150,7 +150,7 @@ room_pick_mixer() {
 room_base() {
   say "Base packages, groups, settings"
   run apt-get update -qq
-  run apt-get install -y -qq inotify-tools curl jq alsa-utils psmisc python3 dbus ca-certificates
+  run apt-get install -y -qq inotify-tools curl jq alsa-utils psmisc python3 dbus ca-certificates avahi-utils
   run groupadd -f audioguard
   run usermod -aG audio,audioguard "$AUDIO_USER"
   id playerui >/dev/null 2>&1 || run useradd --system --no-create-home --shell /usr/sbin/nologin playerui
@@ -302,6 +302,7 @@ EOF
 add_qobuz = "$HOMEAUDIO/pi/jobs/add-qobuz.sh"
 add_spotify = "$HOMEAUDIO/pi/jobs/add-spotify.sh"
 add_airplay2 = "$HOMEAUDIO/pi/jobs/add-airplay.sh"
+add_ma = "$HOMEAUDIO/pi/jobs/add-ma.sh"
 EOF
     if [ -n "${MIXER_CONTROL:-}" ]; then
       cat <<EOF
@@ -330,8 +331,17 @@ room_start() {
   local u
   for u in player-guard player-guard-helper playerui now-playing; do
     run systemctl enable "$u" >/dev/null 2>&1 || true
-    run systemctl restart "$u"
   done
+  run systemctl restart player-guard now-playing
+  if [ -n "${HOMEAUDIO_JOB:-}" ]; then
+    # Run from playerui's "Add a source": restarting the helper now would
+    # kill this very job. It re-reads the manifest after the job, in 10 s.
+    run systemd-run --quiet --on-active=10 --unit="homeaudio-restart-$$" \
+      systemctl restart player-guard-helper playerui
+    info "the web page reloads in a few seconds"
+  else
+    run systemctl restart player-guard-helper playerui
+  fi
 }
 
 room_summary() {

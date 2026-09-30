@@ -8,6 +8,10 @@
 # straight from the browser, exactly like opening a Pi's own playerui page
 # directly. This container is just another place to load the same static
 # page; it holds no state of its own.
+#
+# Local additions (labels for a dashboard, another port, ...) go in
+# docker-compose.override.yml next to this file; Compose reads it by itself
+# and git ignores it.
 services:
   playerui-hub:
     build:

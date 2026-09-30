@@ -202,6 +202,7 @@ out_set_rate() {
   if out_cdsp && [ "$rate" != direct ]; then
     conf_set OUTPUT_RATE "$rate"
     echo "$rate" | write_file "$OUT_TARGET"
+    out_write_generator       # this version's, in case the repo was updated
     run "$OUT_GEN" --reload
     room_manifest
     say "Output: $(out_label) (switched live)"

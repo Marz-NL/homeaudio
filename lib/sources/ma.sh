@@ -164,19 +164,31 @@ ma_find_player() {
   [ -n "$DRY_RUN" ] && return 0
   local i id=""
   info "waiting for Music Assistant to see \"$ROOM_NAME\"..."
+  # By name; else by what identifies this Pi anywhere in the player's details
+  # (sendspin's client id, this Pi's addresses): Music Assistant keeps the name
+  # it first saw, so after a rename or a reinstall the name doesn't match.
+  local cid="sendspin-cli-$(uname -n)" ips
+  ips=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9.]+$' | paste -sd' ')
   for i in $(seq 1 30); do
     # players/all answers a plain list (older servers: {"result": [...]});
     # a failed lookup must never stop the installer
-    id=$(ma_api players/all 2>/dev/null | jq -r --arg n "$ROOM_NAME" '
-      (if type == "object" then .result else . end) // []
-      | map(select((.display_name // .name) == $n))
-      | (map(select(.player_id | startswith("up"))) + .)[0].player_id // empty' 2>/dev/null || true)
+    id=$(ma_api players/all 2>/dev/null | jq -r --arg n "$ROOM_NAME" --arg cid "$cid" --arg ips "$ips" '
+      ((if type == "object" then .result else . end) // []) as $all
+      | ($ips | split(" ") | map(select(. != ""))) as $ip
+      | ($all | map(select((.display_name // .name) == $n))) as $byname
+      | ($all | map(select([.. | strings] | any(. == $cid or (. as $s | $ip | any(. as $a | $s == $a or ($s | startswith($a + ":")))))))) as $byid
+      | (($byname + $byid) | map(select(.player_id | startswith("up"))) + $byname + $byid)[0].player_id // empty' 2>/dev/null || true)
     [ -n "$id" ] && break
     sleep 2
   done
   if [ -n "$id" ]; then
     conf_set MA_PLAYER "$id"
-    info "Music Assistant player: $id"
+    local shown
+    shown=$(ma_api players/all 2>/dev/null | jq -r --arg id "$id" '((if type == "object" then .result else . end) // [])
+      | map(select(.player_id == $id))[0] | (.display_name // .name) // empty' 2>/dev/null || true)
+    info "Music Assistant player: $id${shown:+ (\"$shown\")}"
+    [ -n "$shown" ] && [ "$shown" != "$ROOM_NAME" ] &&
+      info "Music Assistant still calls it \"$shown\" - rename it there (Settings > Players) if you like"
   else
     warn "Music Assistant doesn't show \"$ROOM_NAME\" yet; re-run 'sudo ./install.sh add ma' once it does"
   fi

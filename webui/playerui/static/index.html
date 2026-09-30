@@ -548,7 +548,7 @@ function renderOutputCard(base, data) {
         group.querySelectorAll("button").forEach((b) => (b.disabled = b.classList.contains("primary")));
         return;
       }
-      attachJobLog(base, `Output ${label}`, card, null, [], 0);
+      followJobLine(base, note);
     });
     group.append(btn);
   }
@@ -743,6 +743,34 @@ function attachJobLog(base, label, card, btn, initialLines, initialOffset) {
       }
     }
   }, 1000);
+  activePollers.push(poll);
+}
+
+// A job shown as one line instead of a log: the latest "==>" step, then the
+// result. For the Output card, where a switch is one step (the full log is in
+// /var/log/homeaudio-install.log).
+function followJobLine(base, line) {
+  let since = 0;
+  const poll = setInterval(async () => {
+    let data;
+    try {
+      data = await fetchJSON(`${base}/jobs/log?since=${since}`);
+    } catch {
+      return; // transient - keep polling
+    }
+    since = data.next_offset;
+    const steps = data.lines.filter((l) => l.startsWith("==> ")).map((l) => l.slice(4));
+    if (steps.length) line.textContent = steps[steps.length - 1];
+    if (!data.running) {
+      clearInterval(poll);
+      autoRefreshSuspended = maFormOpen;
+      if (!data.exit_ok) {
+        const err = data.lines.filter((l) => /ERROR|error|failed/.test(l)).pop();
+        line.textContent = `Couldn't switch${err ? ": " + err.trim() : " - see /var/log/homeaudio-install.log"}`;
+      }
+      setTimeout(loadAll, data.exit_ok ? 800 : 4000);
+    }
+  }, 700);
   activePollers.push(poll);
 }
 

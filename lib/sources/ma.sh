@@ -125,14 +125,19 @@ EOF
   ma_find_player
 }
 
-# sendspin's own name for the DAC: the entry on the card's hw:<n>,0
+# The name sendspin should open the DAC by. Newer sendspin takes ALSA names
+# (hw:CARD=...,DEV=0) - stable, and listed even while the DAC is busy.
+# Older versions only know their own PortAudio names, looked up by hw:<n>,0.
 ma_sendspin_device() {
-  local n name
+  local list n name alsa="hw:CARD=$DAC_CARD,DEV=0"
+  [ -n "$DRY_RUN" ] && { echo "$alsa"; return 0; }
+  list=$(sudo -u "$AUDIO_USER" "$1/.local/bin/sendspin" audio-devices list 2>/dev/null ||
+         sudo -u "$AUDIO_USER" "$1/.local/bin/sendspin" --list-audio-devices 2>/dev/null || true)
+  if printf '%s\n' "$list" | grep -qx "  $alsa"; then echo "$alsa"; return 0; fi
   n=$(basename "$(readlink -f "/proc/asound/$DAC_CARD")" | tr -dc '0-9')
-  [ -n "$DRY_RUN" ] && { echo "$DAC_CARD"; return 0; }
-  name=$(sudo -u "$AUDIO_USER" "$1/.local/bin/sendspin" audio-devices list 2>/dev/null |
-         sed -nE "s/^ *\[[0-9]+\] ([^:]+): .*\(hw:$n,0\).*/\1/p" | head -1)
-  echo "${name:-$DAC_CARD}"
+  name=$(printf '%s\n' "$list" | sed -nE "s/^ *\[[0-9]+\] ([^:]+): .*\(hw:$n,0\).*/\1/p" | head -1)
+  [ -n "$name" ] && { echo "$name"; return 0; }
+  die "sendspin doesn't list the DAC ($alsa) - see: ~/.local/bin/sendspin audio-devices list"
 }
 
 # The player id Music Assistant gave this room (its universal player, "up..."),

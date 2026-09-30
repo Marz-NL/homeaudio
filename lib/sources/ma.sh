@@ -113,7 +113,7 @@ EOF
 ma_write_unit() {
   local device hwvol=""
   device=$(ma_sendspin_device)
-  [ -n "${MIXER_CONTROL:-}" ] && ! out_cdsp && hwvol=" --hardware-volume true"
+  [ -n "${MIXER_CONTROL:-}" ] && ! out_cdsp && [ "${SENDSPIN_HWVOL:-y}" != n ] && hwvol=" --hardware-volume true"
   write_file /etc/systemd/system/sendspin.service <<EOF
 [Unit]
 Description=Music Assistant player ($ROOM_NAME, sendspin)

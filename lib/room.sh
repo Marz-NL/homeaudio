@@ -87,6 +87,9 @@ room_adopt() {
   conf_set WANT_MA "$(unit sendspin)"
   v=$(systemctl cat sendspin 2>/dev/null | sed -n 's/^ExecStart=.* --id \([^ ]*\).*/\1/p' | tr -d '"')
   [ -n "$v" ] && conf_set SENDSPIN_ID "$v"
+  # sendspin left the DAC's volume alone before: keep it that way
+  systemctl cat sendspin >/dev/null 2>&1 && ! systemctl cat sendspin | grep -q -- '--hardware-volume' &&
+    conf_set SENDSPIN_HWVOL n
   [ -n "${WANT_CAMILLADSP:-}" ] || { conf_set WANT_CAMILLADSP n; conf_set OUTPUT_ENGINE direct; conf_set OUTPUT_RATE native; }
   info "room \"${ROOM_NAME:-?}\", DAC ${DAC_CARD:-?}, volume '${MIXER_CONTROL:-none}' (${VOLUME_MODE:-?})"
   info "sources: qobuz=$WANT_QOBUZ spotify=$WANT_SPOTIFY airplay=$WANT_AIRPLAY music-assistant=$WANT_MA${SENDSPIN_ID:+ (sendspin id $SENDSPIN_ID)}"

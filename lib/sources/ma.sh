@@ -4,14 +4,39 @@
 
 src_ma_questions() {
   say "Music Assistant"
-  ask MA_URL "Music Assistant address, e.g. http://homeassistant.local:8095" ""
-  [ -n "$MA_URL" ] || die "Music Assistant needs its address"
-  conf_set MA_URL "${MA_URL%/}"
-  info "Token: in Music Assistant, Settings > Profile > Long-lived access tokens."
-  ask_secret MA_TOKEN "Music Assistant token"
-  [ -n "$DRY_RUN" ] && return 0
-  ma_api players/all >/dev/null || die "can't reach Music Assistant at $MA_URL with that token"
-  info "Music Assistant answers at $MA_URL"
+  local tries=0 code url_default=""
+  while :; do
+    ask MA_URL "Music Assistant address, e.g. http://homeassistant.local:8095" "$url_default"
+    [ -n "$MA_URL" ] || die "Music Assistant needs its address"
+    conf_set MA_URL "${MA_URL%/}"
+    info "Token: in Music Assistant itself (not Home Assistant):"
+    info "Settings > Profile > Long-lived access tokens > create one, copy it whole."
+    ask_secret MA_TOKEN "Music Assistant token (typing is hidden)"
+    [ -n "$DRY_RUN" ] && return 0
+
+    code=$(ma_http_code)
+    [ "$code" = 200 ] && { info "Music Assistant answers at $MA_URL"; return 0; }
+    case "$code" in
+      401|403) warn "Music Assistant at $MA_URL rejected that token" ;;
+      000)     warn "nothing answers at $MA_URL - check the address and port (usually 8095)" ;;
+      *)       warn "Music Assistant at $MA_URL answered with HTTP $code" ;;
+    esac
+    # Forget what was wrong, so it's asked again - now or on the next run
+    conf_unset MA_TOKEN
+    if [ "$code" != 401 ] && [ "$code" != 403 ]; then url_default=$MA_URL; conf_unset MA_URL; fi
+    tries=$((tries + 1))
+    if [ "$tries" -ge 3 ] || [ -n "$ASSUME_YES" ] || [ ! -t 0 ]; then
+      die "Music Assistant not connected - run 'sudo ./install.sh add ma' to try again"
+    fi
+    info "Try again:"
+  done
+}
+
+# HTTP status of an authenticated players/all call (000: no answer at all)
+ma_http_code() {
+  curl -s -m 5 -o /dev/null -w '%{http_code}' -X POST "$MA_URL/api" \
+    -H "Content-Type: application/json" -H "Authorization: Bearer $MA_TOKEN" \
+    -d '{"message_id":"install","command":"players/all","args":{}}'
 }
 
 # ma_api <command> [args-json]: Music Assistant's JSON API, result on stdout

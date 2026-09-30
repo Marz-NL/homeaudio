@@ -43,6 +43,12 @@ conf_set() {
   printf '%s=%q\n' "$key" "$value" >> "$CONF"
 }
 
+# Forget an answer (e.g. one that turned out wrong), so the next ask asks again
+conf_unset() {
+  unset "$1"
+  [ -n "$DRY_RUN" ] || [ ! -f "$CONF" ] || sed -i "/^$1=/d" "$CONF"
+}
+
 # ask VAR "Question" [default] - keeps a remembered answer unless --reconfigure
 ask() {
   local var=$1 question=$2 default=${3:-} answer

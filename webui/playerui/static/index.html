@@ -533,7 +533,7 @@ function renderOutputCard(base, data) {
     btn.addEventListener("click", async () => {
       group.querySelectorAll("button").forEach((b) => (b.disabled = true));
       autoRefreshSuspended = true;
-      note.textContent = "Switching - Spotify, AirPlay and Music Assistant restart briefly; Qobuz keeps playing.";
+      note.textContent = "Switching - every source restarts briefly. Qobuz and AirPlay: pick this room in their app again afterwards.";
       try {
         await fetchJSON(`${base}/jobs/set-rate`, { method: "POST", body: JSON.stringify({ RATE: rate }) });
       } catch (e) {

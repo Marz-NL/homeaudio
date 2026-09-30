@@ -85,9 +85,14 @@ qobuz_settings() {
   qobuz_set hooks.script                /usr/local/bin/qobuz-hook
 }
 
-# Output rate switched: pibuz takes a new device without a restart, so an
-# open Qobuz Connect session stays
-src_qobuz_output() { qobuz_settings; }
+# Output rate switched. pibuz only really moves to a new output device (or
+# a changed ALSA definition) after a restart - its own "output reinitialized"
+# keeps playing on the old one - so restart it. That ends the Qobuz Connect
+# session: the room has to be picked in the Qobuz app again.
+src_qobuz_output() {
+  qobuz_settings
+  run systemctl restart pibuz
+}
 
 qobuz_set() {
   local now

@@ -51,8 +51,8 @@ EOF
 }
 
 # `install.sh rate <native|44100|48000>`: switch, and move the installed
-# sources over. pibuz switches without a restart (its Qobuz session stays);
-# spotifyd, shairport-sync and sendspin restart and reconnect.
+# sources over. They all restart: spotifyd and sendspin reconnect by
+# themselves; Qobuz (pibuz) and AirPlay have to be picked again in their app.
 out_set_rate() {
   local rate=$1 src
   need_root rate "$rate"
@@ -86,9 +86,7 @@ out_resume() {
   local user; user=$(sed -n 's/^PIBUZ_USER=//p' /etc/player-guard.env 2>/dev/null)
   case "$src" in
     qobuz)
-      for i in $(seq 1 10); do runuser -u "$user" -- pibuz ping >/dev/null 2>&1 && break; sleep 1; done
-      sleep 1
-      runuser -u "$user" -- pibuz play >/dev/null 2>&1 && info "Qobuz: playing again" ;;
+      info "Qobuz: pick \"${ROOM_NAME:-this room}\" in the Qobuz app again to continue" ;;
     ma)
       for i in $(seq 1 20); do
         systemctl is-active -q sendspin && journalctl -u sendspin --since "-30 s" -o cat | grep -q "Server connected" && break

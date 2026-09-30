@@ -8,6 +8,7 @@
 #   ./install.sh hub                   a Docker host: one overview page for every room
 #   sudo ./install.sh heos             bridge a HEOS speaker to Qobuz Connect (Pi or homelab)
 #   ./install.sh doctor                check what is installed and running
+#   sudo ./install.sh uninstall        remove it all again (--purge: also answers and app logins)
 #
 # Roles combine, e.g. `sudo ./install.sh room heos` on a Pi that also runs the
 # HEOS bridge. Answers are remembered in /etc/homeaudio/install.conf, so a
@@ -35,8 +36,9 @@ while [ $# -gt 0 ]; do
     --yes|-y)      export ASSUME_YES=1 ;;
     --reconfigure) export RECONFIGURE=1 ;;
     --no-docker)   NO_DOCKER=1 ;;
+    --purge)       export PURGE=1 ;;
     -h|--help)     usage ;;
-    room|hub|heos|doctor) ROLES+=("$1") ;;
+    room|hub|heos|doctor|uninstall) ROLES+=("$1") ;;
     add)           shift; [ $# -gt 0 ] || usage 1; ADD+=("$1") ;;
     rate)          shift; [ $# -gt 0 ] || usage 1; RATE=$1 ;;
     *)             echo "Unknown: $1"; usage 1 ;;

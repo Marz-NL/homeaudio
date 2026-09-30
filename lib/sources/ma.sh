@@ -70,6 +70,7 @@ ma_api() {
 src_ma_install() {
   say "Music Assistant player (sendspin)"
   local home; home=$(getent passwd "$AUDIO_USER" | cut -d: -f6)
+  apt_install libportaudio2   # sendspin plays through PortAudio; without it it can't start
   if [ ! -x "$home/.local/bin/sendspin" ]; then
     info "installing sendspin (via uv)"
     run sudo -u "$AUDIO_USER" sh -c 'command -v uv >/dev/null || [ -x "$HOME/.local/bin/uv" ] || curl -LsSf https://astral.sh/uv/install.sh | env UV_NO_MODIFY_PATH=1 INSTALLER_PRINT_QUIET=1 sh'
@@ -110,6 +111,17 @@ EOF
   run systemctl daemon-reload
   run systemctl enable sendspin >/dev/null 2>&1
   run systemctl restart sendspin
+  # Only wait for Music Assistant when the player actually stays up
+  if [ -z "$DRY_RUN" ]; then
+    sleep 5
+    if ! systemctl is-active -q sendspin; then
+      warn "sendspin doesn't start - its last words:"
+      journalctl -u sendspin -n 8 -o cat --no-pager | sed 's/^/        /'
+      warn "fix that, then: sudo ./install.sh add ma"
+      return 0
+    fi
+    info "sendspin runs as \"$ROOM_NAME\" on $device"
+  fi
   ma_find_player
 }
 

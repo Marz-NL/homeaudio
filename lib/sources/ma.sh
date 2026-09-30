@@ -187,8 +187,9 @@ ma_find_player() {
     shown=$(ma_api players/all 2>/dev/null | jq -r --arg id "$id" '((if type == "object" then .result else . end) // [])
       | map(select(.player_id == $id))[0] | (.display_name // .name) // empty' 2>/dev/null || true)
     info "Music Assistant player: $id${shown:+ (\"$shown\")}"
-    [ -n "$shown" ] && [ "$shown" != "$ROOM_NAME" ] &&
+    if [ -n "$shown" ] && [ "$shown" != "$ROOM_NAME" ]; then
       info "Music Assistant still calls it \"$shown\" - rename it there (Settings > Players) if you like"
+    fi
   else
     warn "Music Assistant doesn't show \"$ROOM_NAME\" yet; re-run 'sudo ./install.sh add ma' once it does"
   fi

@@ -73,7 +73,10 @@ qobuz_settings() {
   local i
   for i in $(seq 1 20); do sudo -u "$AUDIO_USER" pibuz ping >/dev/null 2>&1 && break; sleep 0.5; done
   qobuz_set audio.backend               alsa
-  if out_fixed; then qobuz_set audio.alsa_plugin pcm; else qobuz_set audio.alsa_plugin hw; fi
+  # hw also for the fixed-rate device: pibuz opens a bare ALSA name defined in
+  # conf.d (homeaudio) directly; 'pcm' would go through CPAL, which can't find
+  # it and falls back to the default card (the Pi's headphone jack)
+  qobuz_set audio.alsa_plugin           hw
   qobuz_set audio.device                "$(out_device)"
   qobuz_set audio.alsa_hardware_volume  false
   qobuz_set audio.normalization_enabled false

@@ -11,7 +11,11 @@ RUN cargo build --release -p playerui
 # Same Debian base/glibc version as the builder, to avoid an ABI mismatch
 # between the two stages.
 FROM debian:bookworm-slim
-RUN useradd --system --no-create-home --shell /usr/sbin/nologin playerui
+# avahi-browse: finds the rooms (and Music Assistant) through the host's
+# avahi-daemon, reached over the D-Bus socket docker-compose.yml mounts
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends avahi-utils \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --system --no-create-home --shell /usr/sbin/nologin playerui
 COPY --from=builder /build/target/release/playerui /usr/local/bin/playerui
 USER playerui
 EXPOSE 8189

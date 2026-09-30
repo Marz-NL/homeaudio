@@ -1,7 +1,7 @@
 # A pure "hub" viewer of the real rooms - no local player-guard-helper, no
 # audio hardware, no secrets. Run on any always-on machine:
 #
-#   cp config/hub.example.toml config/hub.toml   # list your rooms
+#   cp config/hub.example.toml config/hub.toml   # rooms are found by themselves
 #   cd docker && docker compose up -d --build
 #
 # Then open http://<this host>:8189 - it shows every room, each fetched live
@@ -20,3 +20,7 @@ services:
     volumes:
       # Editing the rooms list only needs a container restart, not a rebuild.
       - ../config/hub.toml:/config/hub.toml:ro
+      # Rooms found by themselves: the host's avahi-daemon, over D-Bus (no
+      # host networking needed). Without avahi on the host, drop this line
+      # and list the rooms in hub.toml instead.
+      - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket

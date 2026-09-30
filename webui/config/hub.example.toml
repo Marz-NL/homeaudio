@@ -1,7 +1,8 @@
 # playerui manifest for the central "hub" instance (webui/docker): a pure
 # remote viewer - no local audio hardware, no player-guard, no
 # player-guard-helper running alongside it, just this one binary.
-# Copy to config/hub.toml before `docker compose up`.
+# Copy to config/hub.toml before `docker compose up`; as it is, it finds the
+# rooms by itself.
 #
 # The trick: `rooms` lists the real per-room instances but not this one, so
 # this instance's own (empty) tab never renders - the page shows only the
@@ -15,7 +16,10 @@
 
 room = "Overview"
 audio_owner_file = "/dev/null"
-rooms = ["http://livingroom.local:8189", "http://bedroom.local:8189"]
+# Empty: every room on the network is found by itself (needs the D-Bus mount
+# in docker-compose.yml). Rooms listed here come first, in this order - for a
+# room on another network, or a host without avahi.
+rooms = []
 
 [music_assistant]
 env_file = "/dev/null"

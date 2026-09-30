@@ -97,9 +97,14 @@ bookmark for the house. `install.sh hub` is coming; for now:
 
 ```
 cd webui
-cp config/hub.example.toml config/hub.toml     # list your rooms
+cp config/hub.example.toml config/hub.toml
 cd docker && docker compose up -d --build       # http://<host>:8189
 ```
+
+It finds the rooms by itself through the host's avahi-daemon (the container
+talks to it over the mounted D-Bus socket, no host networking). A host
+without avahi: remove that mount from `docker-compose.yml` and list the rooms
+in `hub.toml`.
 
 ## HEOS bridge (optional)
 

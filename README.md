@@ -15,6 +15,10 @@ Denon/Marantz **HEOS** speaker into Qobuz Connect too.
   switches per source and every room on one page - rooms find each other on
   the network by themselves. Optionally a hub container
   on a homelab with the same page.
+- **Bit-perfect, or one fixed rate.** Every track plays at its own rate,
+  untouched. For a studio - a DAC into an audio interface locked to 44.1 or
+  48 kHz - an optional sample-rate converter (CamillaDSP) switches live from
+  the web page, without interrupting the music.
 - **No cloud, no accounts** beyond the ones your apps already use.
 
 ## Quick start: a room
@@ -40,6 +44,8 @@ Afterwards:
 - Qobuz: pick the room once in the Qobuz app; it stays available from then on.
 - Check everything: `sudo ./install.sh doctor`
 - Add an app later: `sudo ./install.sh add spotify` (or use "Add a source" on the web page).
+- Output rate: the Output card on the web page, or `sudo ./install.sh rate 44100`
+  (see below).
 - Change answers: `sudo ./install.sh room --reconfigure`
 - See what it would do first: `sudo ./install.sh room --dry-run`
 
@@ -53,6 +59,26 @@ Optional, and installed by you (see [music-assistant.io](https://music-assistant
 Say yes to it during `install.sh room` (or `install.sh add ma` later), give
 its address and a long-lived token (Settings > Profile), and the room shows
 up in Music Assistant as a player.
+
+### Output rate (studio)
+
+By default every source plays straight on the DAC at the music's own rate
+(bit-perfect). If the DAC feeds something that runs at a fixed clock - an
+audio interface's S/PDIF input while your DAW session is at 44.1 or 48 kHz -
+answer yes to "Sample-rate converter" during `install.sh room`, or just pick
+44.1 or 48 kHz on the web page's Output card later.
+
+The sources then play into [CamillaDSP](https://github.com/HEnquist/camilladsp),
+which feeds the DAC: at the track's own rate (Bit-perfect, passed through
+untouched) or converted to the rate you picked (with 1 dB of headroom, since
+resampling can overshoot near full scale). Switching between those is live:
+the music keeps playing, no app loses its connection. Only moving a room onto
+CamillaDSP the first time restarts the sources once.
+
+```
+sudo ./install.sh rate 48000     # native | 44100 | 48000, live
+sudo ./install.sh rate direct    # back to sources straight on the DAC
+```
 
 ## The hub (optional)
 
@@ -84,8 +110,8 @@ shows what the speaker plays, whichever app started it.
 ```
  phone apps ──► Qobuz Connect (pibuz) ─┐
             ──► Spotify Connect (spotifyd) ─┤
-            ──► AirPlay 2 (shairport-sync) ─┼──► DAC ──► amplifier
- Music Assistant ──► sendspin ──────────────┘
+            ──► AirPlay 2 (shairport-sync) ─┼──► [CamillaDSP] ──► DAC ──► amplifier
+ Music Assistant ──► sendspin ──────────────┘    (optional: fixed rate)
                          │
           player-guard: who has the DAC, pauses the others, volume
                          │
@@ -95,9 +121,9 @@ shows what the speaker plays, whichever app started it.
 
 | Directory | What |
 |---|---|
-| `install.sh`, `lib/` | the installer: `lib/room.sh`, `lib/sources/*`, `lib/doctor.sh` |
+| `install.sh`, `lib/` | the installer: `lib/room.sh`, `lib/sources/*`, `lib/output.sh` (output rate), `lib/doctor.sh` |
 | `pi/bin/` | runs on each room: `player-guard`, `now-playing`, the apps' hooks |
-| `pi/jobs/` | what playerui's "Add a source" runs |
+| `pi/jobs/` | what playerui's "Add a source", Music Assistant and Output cards run |
 | `webui/` | playerui, player-guard-helper, the hub container ([README](webui/README.md)) |
 | `heos-bridge/` | qobuz-proxy with HEOS support + heos-guard |
 | `patches/` | the spotifyd linear-volume patch used for the prebuilt binary |
@@ -105,5 +131,6 @@ shows what the speaker plays, whichever app started it.
 ## Licenses
 
 MIT (see `LICENSE`). `heos-bridge/qobuz-proxy` is leolobato's MIT project
-with HEOS changes; spotifyd (shipped prebuilt) is GPL-3.0. Details, and the
+with HEOS changes; spotifyd (shipped prebuilt) and CamillaDSP (downloaded from
+its project) are GPL-3.0. Details, and the
 other projects the installer fetches, in [THIRD-PARTY.md](THIRD-PARTY.md).

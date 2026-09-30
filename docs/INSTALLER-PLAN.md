@@ -8,6 +8,7 @@ sudo ./install.sh room            # a Pi with a DAC
 ./install.sh heos                 # HEOS bridge (qobuz-proxy + heos-guard) - on the hub or on a Pi
 ./install.sh room heos            # combined
 ./install.sh add <source>         # add a source later (also what playerui's "Add a source" runs)
+./install.sh rate <rate>          # output: native | 44100 | 48000 (live, CamillaDSP) | direct
 ./install.sh doctor               # check everything, explain what's wrong
 ```
 
@@ -40,6 +41,7 @@ sudo ./install.sh room            # a Pi with a DAC
 | Qobuz | pibuz release + settings (hw, device, name, hook, linear) | - (one cast from the phone afterwards) |
 | Spotify | spotifyd + D-Bus policy + conf following [volume] | - |
 | AirPlay 2 | nqptp + shairport-sync (source build), conf with mixer + hooks | - |
+| Output rate (optional) | CamillaDSP (its release binary), alsa_cdsp plugin (our release, or built), ALSA device `homeaudio`, /usr/local/lib/homeaudio/cdsp-config | sample-rate converter y/n (default n); rate switched live later |
 
 ## What a hub / HEOS host needs
 
@@ -72,6 +74,18 @@ The `heos` role installs qobuz-proxy and heos-guard into a Python venv
 (/opt/homeaudio/venv) with two systemd units - fits a simple headless Pi. On a
 host with Docker the compose variant stays available; --no-docker forces the
 venv variant.
+
+## Output rate
+
+Rooms default to `direct`: every source opens the DAC itself, bit-perfect. A
+fixed rate used to mean an ALSA plug device per source - every switch then had
+to reopen every source, and pibuz only rereads ALSA when restarted (losing its
+Qobuz Connect session). Instead the conversion now sits in one place:
+sources play into the ALSA plugin alsa_cdsp, which starts CamillaDSP per
+stream at that stream's own rate and format. CamillaDSP resamples once, to
+the chosen rate, or passes through for bit-perfect. A switch rewrites its
+config and sends SIGHUP: live, ~0.1 s, sources untouched. player-guard and
+now-playing look through camilladsp to its parent process to see the source.
 
 ## Test hardware
 

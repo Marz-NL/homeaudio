@@ -114,7 +114,12 @@ EOF
   # Only wait for Music Assistant when the player actually stays up
   if [ -z "$DRY_RUN" ]; then
     sleep 5
-    if ! systemctl is-active -q sendspin; then
+    if ! systemctl is-active -q sendspin && dac_busy; then
+      # PortAudio can't see a DAC that's in use, so sendspin can't start yet
+      warn "the DAC is in use (something is playing): sendspin starts by itself"
+      warn "once it's free - then run 'sudo ./install.sh add ma' to finish"
+      return 0
+    elif ! systemctl is-active -q sendspin; then
       warn "sendspin doesn't start - its last words:"
       journalctl -u sendspin -n 8 -o cat --no-pager | sed 's/^/        /'
       warn "fix that, then: sudo ./install.sh add ma"
@@ -125,20 +130,19 @@ EOF
   ma_find_player
 }
 
-# The name sendspin should open the DAC by. Newer sendspin takes ALSA names
-# (hw:CARD=...,DEV=0) - stable, and listed even while the DAC is busy.
-# Older versions only know their own PortAudio names, looked up by hw:<n>,0.
+# The name sendspin opens the DAC by: PortAudio's device name starts with the
+# card's long name, the part after " - " in /proc/asound/cards (E30,
+# snd_rpi_hifiberry_digi, ...). Read from there rather than asked from
+# sendspin: PortAudio leaves a DAC that's in use out of its list. (sendspin's
+# hw:CARD=... names pass its startup check but fail once a stream starts.)
 ma_sendspin_device() {
-  local list n name alsa="hw:CARD=$DAC_CARD,DEV=0"
-  [ -n "$DRY_RUN" ] && { echo "$alsa"; return 0; }
-  list=$(sudo -u "$AUDIO_USER" "$1/.local/bin/sendspin" audio-devices list 2>/dev/null ||
-         sudo -u "$AUDIO_USER" "$1/.local/bin/sendspin" --list-audio-devices 2>/dev/null || true)
-  if printf '%s\n' "$list" | grep -qx "  $alsa"; then echo "$alsa"; return 0; fi
-  n=$(basename "$(readlink -f "/proc/asound/$DAC_CARD")" | tr -dc '0-9')
-  name=$(printf '%s\n' "$list" | sed -nE "s/^ *\[[0-9]+\] ([^:]+): .*\(hw:$n,0\).*/\1/p" | head -1)
-  [ -n "$name" ] && { echo "$name"; return 0; }
-  die "sendspin doesn't list the DAC ($alsa) - see: ~/.local/bin/sendspin audio-devices list"
+  local name
+  name=$(dac_list | awk -F'|' -v c="$DAC_CARD" '$1 == c { sub(/^.* - /, "", $2); print $2 }')
+  echo "${name:-$DAC_CARD}"
 }
+
+# Is another program playing on the DAC right now?
+dac_busy() { ! grep -q closed "/proc/asound/$DAC_CARD/pcm0p/sub0/status" 2>/dev/null; }
 
 # The player id Music Assistant gave this room (its universal player, "up..."),
 # found by name once sendspin has registered

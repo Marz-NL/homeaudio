@@ -8,8 +8,8 @@ src_ma_questions() {
   # From playerui's form: these win over remembered (possibly wrong) answers
   [ -n "${MA_URL_GIVEN:-}" ] && MA_URL=${MA_URL_GIVEN%/}
   [ -n "${MA_TOKEN_GIVEN:-}" ] && MA_TOKEN=$MA_TOKEN_GIVEN
-  url_default=$(ma_discover)
-  [ -n "$url_default" ] && [ -z "${MA_URL:-}" ] && info "found Music Assistant at $url_default"
+  url_default=${MA_FOUND:-$(ma_discover)}   # MA_FOUND: room_questions looked already
+  [ -n "$url_default" ] && [ -z "${MA_URL:-}" ] && [ -z "${MA_FOUND:-}" ] && info "found Music Assistant at $url_default"
   # Given by playerui (or the environment): use them without asking
   [ -n "${MA_URL:-}" ] && [ -n "$ASSUME_YES" ] && url_default=$MA_URL
   [ -z "${MA_URL:-}" ] && [ -n "$ASSUME_YES" ] && [ -n "$url_default" ] && MA_URL=$url_default

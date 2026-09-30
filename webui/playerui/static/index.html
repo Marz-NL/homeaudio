@@ -106,7 +106,9 @@
     background: var(--card); border: 1px solid var(--border); border-radius: 14px;
     padding: 13px 16px; margin-bottom: 8px;
   }
-  .card-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .card-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 12px; }
+  /* what a card grows below its title row (form, hints, job log) spans the full width */
+  .card-row > .form, .card-row > .hint, .card-row > .log-panel, .card-row > .log-status { flex: 1 0 100%; min-width: 0; }
   .card-name { font-weight: 500; }
   .card-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
   .disclosure-btn {
@@ -563,7 +565,7 @@ function renderMusicAssistantCard(base, data) {
   if (ma.can_setup) {
     btn = document.createElement("button");
     btn.className = "btn";
-    btn.textContent = ma.configured ? "Reconnect" : "Connect";
+    btn.textContent = ma.configured ? "Reconnect" : "Set up";
     right.push(btn);
   }
   const card = serviceRow("Music Assistant", right);

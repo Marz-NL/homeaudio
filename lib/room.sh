@@ -80,7 +80,16 @@ room_questions() {
   ask_yesno WANT_QOBUZ   "Qobuz Connect (Qobuz app)" y
   ask_yesno WANT_SPOTIFY "Spotify Connect (needs Spotify Premium)" y
   ask_yesno WANT_AIRPLAY "AirPlay 2 (Apple devices; builds from source, ~10 min)" y
-  ask_yesno WANT_MA      "Music Assistant (only if you already run it somewhere)" n
+  # Music Assistant: yes by default when it's on the network already
+  local ma_default=n
+  if [ -z "${WANT_MA:-}" ] || [ -n "$RECONFIGURE" ]; then
+    . "$HOMEAUDIO/lib/sources/ma.sh"
+    info "looking for Music Assistant on the network..."
+    MA_FOUND=$(ma_discover)
+    if [ -n "$MA_FOUND" ]; then info "found Music Assistant at $MA_FOUND"; ma_default=y
+    else info "no Music Assistant found (fine if you don't use it)"; fi
+  fi
+  ask_yesno WANT_MA      "Music Assistant (only if you already run it somewhere)" $ma_default
 
   say "Home Assistant (optional)"
   info "now-playing can push what plays to a Home Assistant webhook."

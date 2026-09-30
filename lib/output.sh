@@ -154,10 +154,11 @@ devices:
   queuelimit: 1
   capture_samplerate: $2
 EOF
-  [ -n "$convert" ] && cat <<EOF
+  if [ -n "$convert" ]; then cat <<EOF
   resampler:
     type: Synchronous
 EOF
+  fi
   cat <<EOF
   capture:
     type: Stdin
@@ -168,7 +169,7 @@ EOF
     channels: $3
     device: "hw:CARD=$DAC,DEV=0"
 EOF
-  [ -n "$convert" ] && cat <<EOF
+  if [ -n "$convert" ]; then cat <<EOF
 filters:
   headroom:
     type: Gain
@@ -179,6 +180,7 @@ pipeline:
     channels: [0, 1]
     names: [headroom]
 EOF
+  fi
 } > $RUN/config.yml.new && mv -f $RUN/config.yml.new $RUN/config.yml
 [ -n "$reload" ] && pkill -HUP -x camilladsp
 exit 0

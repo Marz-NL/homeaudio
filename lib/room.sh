@@ -87,9 +87,6 @@ room_adopt() {
   conf_set WANT_MA "$(unit sendspin)"
   v=$(systemctl cat sendspin 2>/dev/null | sed -n 's/^ExecStart=.* --id \([^ ]*\).*/\1/p' | tr -d '"')
   [ -n "$v" ] && conf_set SENDSPIN_ID "$v"
-  # sendspin left the DAC's volume alone before: keep it that way
-  systemctl cat sendspin >/dev/null 2>&1 && ! systemctl cat sendspin | grep -q -- '--hardware-volume' &&
-    conf_set SENDSPIN_HWVOL n
   [ -n "${WANT_CAMILLADSP:-}" ] || { conf_set WANT_CAMILLADSP n; conf_set OUTPUT_ENGINE direct; conf_set OUTPUT_RATE native; }
   # A drop-in that sets ExecStart would keep overriding the units written
   # below: move it aside (its settings are taken over above)

@@ -113,7 +113,9 @@ EOF
 ma_write_unit() {
   local device hwvol=""
   device=$(ma_sendspin_device)
-  [ -n "${MIXER_CONTROL:-}" ] && ! out_cdsp && [ "${SENDSPIN_HWVOL:-y}" != n ] && hwvol=" --hardware-volume true"
+  # On the DAC's mixer like Spotify and AirPlay: the one level they all share
+  # (sendspin's own default when it finds a mixer; said explicitly here)
+  [ -n "${MIXER_CONTROL:-}" ] && ! out_cdsp && hwvol=" --hardware-volume true"
   write_file /etc/systemd/system/sendspin.service <<EOF
 [Unit]
 Description=Music Assistant player ($ROOM_NAME, sendspin)

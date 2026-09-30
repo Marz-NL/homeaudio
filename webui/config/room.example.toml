@@ -54,6 +54,13 @@ add_qobuz = "/opt/homeaudio/pi/jobs/add-qobuz.sh"
 add_spotify = "/opt/homeaudio/pi/jobs/add-spotify.sh"
 add_airplay2 = "/opt/homeaudio/pi/jobs/add-airplay.sh"
 add_ma = "/opt/homeaudio/pi/jobs/add-ma.sh"
+set_rate = "/opt/homeaudio/pi/jobs/set-rate.sh"
+
+# Output: "native" = bit-perfect (default), or "44100"/"48000": every source
+# is converted to that rate - for gear locked to one rate, like a DAW input.
+# Switch it in the web page, or: sudo ./install.sh rate 48000
+[output]
+rate = "native"
 
 # Volume: all hardware-volume sources (sendspin, spotifyd, shairport-sync)
 # drive the DAC's one hardware mixer; player-guard applies the mode when the

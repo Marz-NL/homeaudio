@@ -133,6 +133,8 @@
   }
   .btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .seg { display: flex; gap: 4px; }
+  .seg .btn { padding: 4px 10px; }
   .switch { position: relative; width: 46px; height: 26px; flex-shrink: 0; }
   .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
   .slider { position: absolute; inset: 0; background: var(--border); border-radius: 999px;
@@ -180,7 +182,7 @@
 
 <script>
 const DAC_LABEL = { ma: "Music Assistant", qobuz: "Qobuz Connect", spotify: "Spotify Connect", airplay: "AirPlay 2", none: "nothing" };
-const JOB_SLUGS = { AddQobuz: "add-qobuz", AddSpotify: "add-spotify", AddAirplay2: "add-airplay2", AddMusicAssistant: "add-ma" };
+const JOB_SLUGS = { AddQobuz: "add-qobuz", AddSpotify: "add-spotify", AddAirplay2: "add-airplay2", AddMusicAssistant: "add-ma", SetRate: "set-rate" };
 // Fixed display order regardless of manifest/array order, so every room's
 // pane reads the same: Music Assistant (rendered separately, always first),
 // then Qobuz, Spotify, AirPlay 2, Player guard last.
@@ -404,6 +406,7 @@ function renderSetup(base, data) {
   section.append(label);
 
   section.append(renderMusicAssistantCard(base, data));
+  if (data.output && data.output.can_set) section.append(renderOutputCard(base, data));
 
   const services = [...data.services].sort(
     (a, b) => (SERVICE_ORDER[a.id] ?? 99) - (SERVICE_ORDER[b.id] ?? 99)
@@ -504,6 +507,46 @@ function pollGuardLog(base, panel) {
   const id = setInterval(fetchOnce, 2000);
   activePollers.push(id);
   return id;
+}
+
+// Output: bit-perfect, or one fixed rate for everything (for gear locked to
+// a rate, like a DAW's S/PDIF input). Switching runs install.sh rate as a job.
+const RATE_CHOICES = [["native", "Bit-perfect"], ["44100", "44.1 kHz"], ["48000", "48 kHz"]];
+
+function renderOutputCard(base, data) {
+  const current = data.output.rate;
+  const group = document.createElement("div");
+  group.className = "seg";
+  const card = serviceRow("Output", [group]);
+  const note = document.createElement("div");
+  note.className = "hint";
+  note.textContent = current === "native"
+    ? "Each track at its own rate, untouched."
+    : "Everything converted to one rate (best quality). Match it to your DAW session.";
+  card.append(note);
+
+  for (const [rate, label] of RATE_CHOICES) {
+    const btn = document.createElement("button");
+    btn.className = "btn" + (rate === current ? " primary" : "");
+    btn.textContent = label;
+    btn.disabled = rate === current;
+    btn.addEventListener("click", async () => {
+      group.querySelectorAll("button").forEach((b) => (b.disabled = true));
+      autoRefreshSuspended = true;
+      note.textContent = "Switching - Spotify, AirPlay and Music Assistant restart briefly; Qobuz keeps playing.";
+      try {
+        await fetchJSON(`${base}/jobs/set-rate`, { method: "POST", body: JSON.stringify({ RATE: rate }) });
+      } catch (e) {
+        autoRefreshSuspended = maFormOpen;
+        note.textContent = `Couldn't switch: ${e.message}`;
+        group.querySelectorAll("button").forEach((b) => (b.disabled = b.classList.contains("primary")));
+        return;
+      }
+      attachJobLog(base, `Output ${label}`, card, null, [], 0);
+    });
+    group.append(btn);
+  }
+  return card;
 }
 
 function renderMusicAssistantCard(base, data) {

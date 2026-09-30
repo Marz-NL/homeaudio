@@ -76,28 +76,7 @@ src_ma_install() {
     run sudo -u "$AUDIO_USER" sh -c 'command -v uv >/dev/null || [ -x "$HOME/.local/bin/uv" ] || curl -LsSf https://astral.sh/uv/install.sh | env UV_NO_MODIFY_PATH=1 INSTALLER_PRINT_QUIET=1 sh'
     run sudo -u "$AUDIO_USER" sh -c '$HOME/.local/bin/uv tool install -q sendspin 2>&1 | grep -v "is not on your PATH" || true'
   fi
-  local device hwvol=""
-  device=$(ma_sendspin_device "$home")
-  [ -n "${MIXER_CONTROL:-}" ] && hwvol=" --hardware-volume true"
-  write_file /etc/systemd/system/sendspin.service <<EOF
-[Unit]
-Description=Music Assistant player ($ROOM_NAME, sendspin)
-After=network-online.target sound.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=$AUDIO_USER
-SupplementaryGroups=audio
-ExecStart=$home/.local/bin/sendspin daemon --name "$ROOM_NAME" --audio-device "$device"$hwvol
-Restart=on-failure
-RestartSec=10
-NoNewPrivileges=true
-PrivateTmp=true
-
-[Install]
-WantedBy=multi-user.target
-EOF
+  ma_write_unit "$home"
   local cmd
   for cmd in stop pause play; do
     write_file "/usr/local/bin/ma-$cmd" 755 <<EOF
@@ -125,9 +104,43 @@ EOF
       warn "fix that, then: sudo ./install.sh add ma"
       return 0
     fi
-    info "sendspin runs as \"$ROOM_NAME\" on $device"
+    info "sendspin runs as \"$ROOM_NAME\" on $(ma_sendspin_device)"
   fi
   ma_find_player
+}
+
+# The sendspin unit: its name, the DAC (or the fixed-rate device), hardware volume
+ma_write_unit() {
+  local device hwvol=""
+  device=$(ma_sendspin_device)
+  [ -n "${MIXER_CONTROL:-}" ] && ! out_fixed && hwvol=" --hardware-volume true"
+  write_file /etc/systemd/system/sendspin.service <<EOF
+[Unit]
+Description=Music Assistant player ($ROOM_NAME, sendspin)
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=$AUDIO_USER
+SupplementaryGroups=audio
+ExecStart=$1/.local/bin/sendspin daemon --name "$ROOM_NAME" --audio-device "$device"$hwvol
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+# Output rate switched: new unit, restart (Music Assistant reconnects)
+src_ma_output() {
+  local home; home=$(getent passwd "$AUDIO_USER" | cut -d: -f6)
+  ma_write_unit "$home"
+  run systemctl daemon-reload
+  run systemctl restart sendspin
 }
 
 # The name sendspin opens the DAC by: PortAudio's device name starts with the
@@ -137,6 +150,7 @@ EOF
 # hw:CARD=... names pass its startup check but fail once a stream starts.)
 ma_sendspin_device() {
   local name
+  out_fixed && { echo "$OUT_PCM"; return 0; }   # PortAudio lists it by that name
   name=$(dac_list | awk -F'|' -v c="$DAC_CARD" '$1 == c { sub(/^.* - /, "", $2); print $2 }')
   echo "${name:-$DAC_CARD}"
 }

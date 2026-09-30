@@ -20,6 +20,7 @@ room_main() {
     "src_${src}_questions"
   done
   room_base
+  out_write_alsa_conf       # the fixed-rate device, or none for bit-perfect
   room_guard
   room_webui
   room_nowplaying
@@ -62,7 +63,7 @@ room_questions() {
   say "About this room"
   ask AUDIO_USER "User the audio services run as" "${SUDO_USER:-pi}"
   id "$AUDIO_USER" >/dev/null 2>&1 || die "user '$AUDIO_USER' does not exist"
-  local host; host=$(hostname)
+  local host; host=$(uname -n)
   ask ROOM_NAME "Room name (shown in the apps)" "${host^}"
 
   room_pick_dac
@@ -287,7 +288,7 @@ EOF
 # (_homeaudio._tcp); OTHER_ROOMS in install.conf can add ones it can't see.
 room_manifest() {
   local rooms url self
-  self="http://$(hostname).local:8189"
+  self="http://$(uname -n).local:8189"
   rooms="\"$self\""
   for url in ${OTHER_ROOMS:-}; do rooms="$rooms, \"$url\""; done
   {
@@ -314,6 +315,11 @@ add_qobuz = "$HOMEAUDIO/pi/jobs/add-qobuz.sh"
 add_spotify = "$HOMEAUDIO/pi/jobs/add-spotify.sh"
 add_airplay2 = "$HOMEAUDIO/pi/jobs/add-airplay.sh"
 add_ma = "$HOMEAUDIO/pi/jobs/add-ma.sh"
+set_rate = "$HOMEAUDIO/pi/jobs/set-rate.sh"
+
+# Output: "native" = bit-perfect, or a fixed rate every source is converted to
+[output]
+rate = "${OUTPUT_RATE:-native}"
 EOF
     if [ -n "${MIXER_CONTROL:-}" ]; then
       cat <<EOF
@@ -364,7 +370,7 @@ room_summary() {
     systemctl cat "$u" >/dev/null 2>&1 && printf '    %-20s %s\n' "$u" "$(systemctl is-active "$u")"
   done
   info ""
-  info "Web page: http://$(hostname).local:8189"
+  info "Web page: http://$(uname -n).local:8189"
   info "Watch source changes: journalctl -u player-guard -f -o cat"
   [ "${WANT_QOBUZ:-n}" = y ] && info "Qobuz: pick \"$ROOM_NAME\" in the Qobuz app once, from then on it stays connected."
   return 0

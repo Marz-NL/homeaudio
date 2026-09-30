@@ -30,6 +30,9 @@ pub enum JobRecipe {
     /// Connect the room to Music Assistant: sendspin + the player id, by
     /// install.sh add ma (needs MA_URL and MA_TOKEN).
     AddMusicAssistant,
+    /// Switch the output between bit-perfect and a fixed rate (install.sh rate,
+    /// needs RATE: native | 44100 | 48000).
+    SetRate,
 }
 
 impl JobRecipe {
@@ -39,6 +42,7 @@ impl JobRecipe {
             JobRecipe::AddSpotify => "Spotify Connect",
             JobRecipe::AddAirplay2 => "AirPlay 2",
             JobRecipe::AddMusicAssistant => "Music Assistant",
+            JobRecipe::SetRate => "Output rate",
         }
     }
 }

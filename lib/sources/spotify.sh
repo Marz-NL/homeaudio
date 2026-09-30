@@ -19,32 +19,7 @@ src_spotify_install() {
     die "spotifyd is missing libraries: $(ldd /usr/local/bin/spotifyd | grep 'not found' | tr -s ' ')"
   fi
 
-  local format volume
-  format=$(spotify_format)
-  if [ -n "${MIXER_CONTROL:-}" ]; then
-    # spotifyd 0.4: "mixer" is the ALSA device, "control" the control's name
-    volume="volume_controller = \"alsa\"
-mixer = \"hw:CARD=$DAC_CARD\"
-control = \"$MIXER_CONTROL\""
-  else
-    volume='volume_controller = "softvol"'
-  fi
-  write_file /etc/spotifyd.conf <<EOF
-[global]
-device_name = "$ROOM_NAME"
-device_type = "speaker"
-backend = "alsa"
-device = "hw:CARD=$DAC_CARD,DEV=0"
-audio_format = "$format"
-bitrate = 320
-$volume
-volume_normalisation = false
-cache_path = "/var/cache/spotifyd"
-no_audio_cache = true
-on_song_change_hook = "/usr/local/bin/spotify-hook"
-use_mpris = true
-dbus_type = "system"
-EOF
+  spotify_write_conf
 
   # Let spotifyd register on the system bus, and root (player-guard) pause it
   write_file /etc/dbus-1/system.d/spotifyd.conf <<EOF
@@ -84,6 +59,43 @@ WantedBy=multi-user.target
 EOF
   run systemctl daemon-reload
   run systemctl enable spotifyd >/dev/null 2>&1
+  run systemctl restart spotifyd
+}
+
+# /etc/spotifyd.conf: output device and volume follow the room's settings
+spotify_write_conf() {
+  local format volume
+  format=$(spotify_format)
+  if [ -n "${MIXER_CONTROL:-}" ]; then
+    # spotifyd 0.4: "mixer" is the ALSA device, "control" the control's name
+    volume="volume_controller = \"alsa\"
+mixer = \"hw:CARD=$DAC_CARD\"
+control = \"$MIXER_CONTROL\""
+  else
+    volume='volume_controller = "softvol"'
+  fi
+  write_file /etc/spotifyd.conf <<EOF
+[global]
+device_name = "$ROOM_NAME"
+device_type = "speaker"
+backend = "alsa"
+device = "$(out_device)"
+audio_format = "$format"
+bitrate = 320
+$volume
+volume_normalisation = false
+cache_path = "/var/cache/spotifyd"
+no_audio_cache = true
+on_song_change_hook = "/usr/local/bin/spotify-hook"
+use_mpris = true
+dbus_type = "system"
+EOF
+
+}
+
+# Output rate switched: new device, restart (Spotify reconnects by itself)
+src_spotify_output() {
+  spotify_write_conf
   run systemctl restart spotifyd
 }
 

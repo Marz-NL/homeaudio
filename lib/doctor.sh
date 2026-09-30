@@ -31,6 +31,14 @@ doctor_room() {
     bad "DAC $card is missing" "check the cable/HAT, then reboot; cards now: $(dac_list | cut -d'|' -f1 | tr '\n' ' ')"
   fi
 
+  local rate
+  rate=$(sed -n 's/^rate = "\(.*\)"/\1/p' /etc/player-guard-services.toml)
+  OUTPUT_RATE=${rate:-native}
+  if out_fixed && [ ! -f "$OUT_CONF" ]; then
+    bad "output is set to $(out_label), but $OUT_CONF is missing" "sudo ./install.sh rate ${rate}"
+  else
+    ok "output: $(out_label)"
+  fi
   doctor_unit player-guard "one source at a time" required
   doctor_unit player-guard-helper "playerui's privileged helper" required
   doctor_unit playerui "web page" required

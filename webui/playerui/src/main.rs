@@ -30,6 +30,25 @@ struct JobPaths {
     add_spotify: Option<String>,
     add_airplay2: Option<String>,
     add_ma: Option<String>,
+    set_rate: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone, Default)]
+struct OutputConfig {
+    #[serde(default = "native")]
+    rate: String,
+}
+
+fn native() -> String {
+    "native".to_string()
+}
+
+#[derive(Debug, Serialize)]
+struct OutputStatus {
+    /// "native" (bit-perfect), "44100" or "48000"
+    rate: String,
+    /// the manifest has a set_rate job, so the page can switch it
+    can_set: bool,
 }
 
 fn default_socket() -> String {
@@ -54,6 +73,8 @@ struct Manifest {
     /// frontend then fetches its own /status with a relative URL.
     #[serde(default)]
     rooms: Vec<String>,
+    #[serde(default)]
+    output: Option<OutputConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
@@ -102,6 +123,7 @@ struct StatusResponse {
     services: Vec<ServiceStatus>,
     available_jobs: Vec<AvailableJob>,
     rooms: Vec<String>,
+    output: OutputStatus,
 }
 
 const INDEX_HTML: &str = include_str!("../static/index.html");
@@ -283,6 +305,10 @@ fn build_status(manifest: &Manifest, found: &FoundRooms) -> StatusResponse {
         services,
         available_jobs: available_jobs(manifest),
         rooms,
+        output: OutputStatus {
+            rate: manifest.output.as_ref().map(|o| o.rate.clone()).unwrap_or_else(native),
+            can_set: manifest.jobs.set_rate.is_some(),
+        },
     }
 }
 
@@ -438,6 +464,7 @@ fn handle_run_job(
         "add-spotify" => JobRecipe::AddSpotify,
         "add-airplay2" => JobRecipe::AddAirplay2,
         "add-ma" => JobRecipe::AddMusicAssistant,
+        "set-rate" => JobRecipe::SetRate,
         _ => return err_json(404, "unknown job recipe"),
     };
     let body = json_body(request);

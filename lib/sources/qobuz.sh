@@ -69,18 +69,22 @@ qobuz_build() {
 }
 
 qobuz_settings() {
-  [ -n "$DRY_RUN" ] && { info "would configure pibuz for hw:CARD=$DAC_CARD, name \"$ROOM_NAME\""; return 0; }
+  [ -n "$DRY_RUN" ] && { info "would configure pibuz for $(out_device), name \"$ROOM_NAME\""; return 0; }
   local i
   for i in $(seq 1 20); do sudo -u "$AUDIO_USER" pibuz ping >/dev/null 2>&1 && break; sleep 0.5; done
   qobuz_set audio.backend               alsa
-  qobuz_set audio.alsa_plugin           hw
-  qobuz_set audio.device                "hw:CARD=$DAC_CARD,DEV=0"
+  if out_fixed; then qobuz_set audio.alsa_plugin pcm; else qobuz_set audio.alsa_plugin hw; fi
+  qobuz_set audio.device                "$(out_device)"
   qobuz_set audio.alsa_hardware_volume  false
   qobuz_set audio.normalization_enabled false
   qobuz_set audio.volume_curve          linear   # player-guard carries the shared level over exactly
   qobuz_set qconnect.device_name        "$ROOM_NAME"
   qobuz_set hooks.script                /usr/local/bin/qobuz-hook
 }
+
+# Output rate switched: pibuz takes a new device without a restart, so an
+# open Qobuz Connect session stays
+src_qobuz_output() { qobuz_settings; }
 
 qobuz_set() {
   local now

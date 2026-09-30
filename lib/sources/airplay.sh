@@ -11,11 +11,18 @@ src_airplay_install() {
     airplay_build
   fi
 
+  airplay_write_conf
+  run systemctl enable nqptp shairport-sync >/dev/null 2>&1
+  run systemctl restart nqptp shairport-sync
+}
+
+# /etc/shairport-sync.conf: output device and volume follow the room's settings
+airplay_write_conf() {
   local mixer=""
   [ -n "${MIXER_CONTROL:-}" ] && mixer=" mixer_control_name = \"$MIXER_CONTROL\"; mixer_device = \"hw:CARD=$DAC_CARD\";"
   write_file /etc/shairport-sync.conf <<EOF
 general = { name = "$ROOM_NAME"; output_backend = "alsa"; mpris_service_bus = "system"; };
-alsa = { output_device = "hw:CARD=$DAC_CARD,DEV=0"; disable_standby_mode = "never";$mixer };
+alsa = { output_device = "$(out_device)"; disable_standby_mode = "never";$mixer };
 metadata = {
     enabled = "yes";
     include_cover_art = "yes";
@@ -28,8 +35,12 @@ sessioncontrol = {
     allow_session_interruption = "yes";
 };
 EOF
-  run systemctl enable nqptp shairport-sync >/dev/null 2>&1
-  run systemctl restart nqptp shairport-sync
+}
+
+# Output rate switched: new device, restart
+src_airplay_output() {
+  airplay_write_conf
+  run systemctl restart shairport-sync
 }
 
 airplay_build() {

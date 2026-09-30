@@ -31,6 +31,7 @@ struct JobPaths {
     add_spotify: Option<String>,
     add_airplay2: Option<String>,
     add_ma: Option<String>,
+    set_rate: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -215,7 +216,7 @@ fn recipe_service(recipe: JobRecipe) -> Option<(&'static str, &'static str, &'st
         JobRecipe::AddQobuz => Some(("pibuz", "Qobuz Connect", "pibuz")),
         JobRecipe::AddSpotify => Some(("spotifyd", "Spotify Connect", "spotifyd")),
         JobRecipe::AddAirplay2 => Some(("shairport-sync", "AirPlay 2", "shairport-sync")),
-        JobRecipe::AddMusicAssistant => None,
+        JobRecipe::AddMusicAssistant | JobRecipe::SetRate => None,
     }
 }
 
@@ -270,6 +271,7 @@ fn run_job(
         JobRecipe::AddSpotify => (manifest.jobs.add_spotify.as_ref(), &["NAME", "BUILD"][..]),
         JobRecipe::AddAirplay2 => (manifest.jobs.add_airplay2.as_ref(), &["AIRPLAY_NAME"][..]),
         JobRecipe::AddMusicAssistant => (manifest.jobs.add_ma.as_ref(), &["MA_URL", "MA_TOKEN"][..]),
+        JobRecipe::SetRate => (manifest.jobs.set_rate.as_ref(), &["RATE"][..]),
     };
     let Some(script) = script else {
         return Response::Error {

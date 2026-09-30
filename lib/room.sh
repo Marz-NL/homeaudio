@@ -74,10 +74,6 @@ room_questions() {
   ask_yesno WANT_AIRPLAY "AirPlay 2 (Apple devices; builds from source, ~10 min)" y
   ask_yesno WANT_MA      "Music Assistant (only if you already run it somewhere)" n
 
-  say "Whole-house page"
-  info "playerui on this Pi can show every room. List the others' addresses,"
-  info "e.g. http://bedroom.local:8189 - or leave empty for this room only."
-  ask OTHER_ROOMS "Other rooms (space separated)" ""
   say "Home Assistant (optional)"
   info "now-playing can push what plays to a Home Assistant webhook."
   ask HA_WEBHOOK "Webhook URL, e.g. http://homeassistant.local:8123/api/webhook/<id> (empty: none)" ""
@@ -150,7 +146,7 @@ room_pick_mixer() {
 room_base() {
   say "Base packages, groups, settings"
   run apt-get update -qq
-  run apt-get install -y -qq inotify-tools curl jq alsa-utils psmisc python3 dbus ca-certificates avahi-utils
+  run apt-get install -y -qq inotify-tools curl jq alsa-utils psmisc python3 dbus ca-certificates avahi-daemon avahi-utils
   run groupadd -f audioguard
   run usermod -aG audio,audioguard "$AUDIO_USER"
   id playerui >/dev/null 2>&1 || run useradd --system --no-create-home --shell /usr/sbin/nologin playerui
@@ -208,6 +204,19 @@ room_webui() {
     fetch_binary "$b" "/usr/local/bin/$b" || room_build_webui
   done
   run install -m 644 "$HOMEAUDIO/webui/playerui/systemd/playerui.service" /etc/systemd/system/
+  # Announce this room on the network: every room's page finds the others
+  write_file /etc/avahi/services/homeaudio.service <<EOF
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<service-group>
+  <name replace-wildcards="yes">homeaudio %h</name>
+  <service>
+    <type>_homeaudio._tcp</type>
+    <port>8189</port>
+    <txt-record>room=$ROOM_NAME</txt-record>
+  </service>
+</service-group>
+EOF
   run install -m 644 "$HOMEAUDIO/webui/helper/systemd/player-guard-helper.service" /etc/systemd/system/
 }
 
@@ -274,6 +283,8 @@ EOF
 
 # /etc/player-guard-services.toml, from the answers and what is installed.
 # Rewritten on every run; the [[service]] list follows the installed sources.
+# Other rooms need no listing: playerui finds them on the network
+# (_homeaudio._tcp); OTHER_ROOMS in install.conf can add ones it can't see.
 room_manifest() {
   local rooms url self
   self="http://$(hostname).local:8189"

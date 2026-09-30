@@ -244,6 +244,16 @@ async function loadAll() {
     }
   }));
 
+  // A room can be listed by name and also found on the network by address:
+  // show it once, as it was reached first.
+  const seen = new Set();
+  results = results.filter((r) => {
+    if (!r.data) return true;
+    if (seen.has(r.data.room)) return false;
+    seen.add(r.data.room);
+    return true;
+  });
+
   recomputeSuspend();
   renderApp();
 }

@@ -9,10 +9,11 @@ audio_owner_file = "/run/player-guard/audio-owner"
 now_playing_file = "/run/player-guard/now-playing.json"
 helper_socket = "/run/player-guard/helper.sock"
 
-# Every room's playerui, this one included - lets any room's page show the
-# whole house (multiroom-in-one-page), each room's card still talking
-# directly to that room's own playerui, no central server involved.
-rooms = ["http://livingroom.local:8189", "http://bedroom.local:8189"]
+# Rooms for the whole-house page. Rooms installed by install.sh announce
+# themselves on the network (_homeaudio._tcp) and are found automatically;
+# list only what it can't find, e.g. a room on another network segment.
+# Each room's tab still talks directly to that room's own playerui.
+rooms = ["http://livingroom.local:8189"]
 
 # Music Assistant is a connection, not a toggle: sendspin is never restarted
 # by the guard, so there is no enable/disable for it - only "configured"

@@ -12,7 +12,8 @@ Denon/Marantz **HEOS** speaker into Qobuz Connect too.
   whichever app you use. (DACs without volume control, like S/PDIF outputs,
   keep each app's own volume.)
 - **A web page per room** (`http://<pi>.local:8189`) showing what plays, with
-  switches per source and every room on one page. Optionally a hub container
+  switches per source and every room on one page - rooms find each other on
+  the network by themselves. Optionally a hub container
   on a homelab with the same page.
 - **No cloud, no accounts** beyond the ones your apps already use.
 

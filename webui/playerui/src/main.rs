@@ -220,7 +220,50 @@ fn available_jobs(manifest: &Manifest) -> Vec<AvailableJob> {
     out
 }
 
-fn build_status(manifest: &Manifest) -> StatusResponse {
+// Rooms announce themselves on the LAN (_homeaudio._tcp, see install.sh);
+// refreshed in the background so /status never waits on the network.
+type FoundRooms = std::sync::Arc<std::sync::Mutex<Vec<String>>>;
+
+fn discover_rooms_forever(found: FoundRooms) {
+    loop {
+        if let Ok(out) = Command::new("timeout")
+            .args(["6", "avahi-browse", "-rtp", "_homeaudio._tcp"])
+            .output()
+        {
+            let mut urls: Vec<String> = vec![];
+            let mut names: Vec<String> = vec![];
+            for line in String::from_utf8_lossy(&out.stdout).lines() {
+                // =;iface;proto;name;type;domain;host;address;port;txt
+                let f: Vec<&str> = line.splitn(10, ';').collect();
+                if f.len() < 9 || f[0] != "=" || f[2] != "IPv4" {
+                    continue;
+                }
+                // A host is seen once per interface: keep the LAN one, once
+                let virtual_if = ["lo", "docker", "br-", "veth", "virbr", "tailscale", "zt", "wg", "tun"]
+                    .iter()
+                    .any(|p| f[1].starts_with(p));
+                if virtual_if || names.iter().any(|n| n == f[3]) {
+                    continue;
+                }
+                names.push(f[3].to_string());
+                urls.push(format!("http://{}:{}", f[7], f[8]));
+            }
+            urls.sort();
+            *found.lock().unwrap() = urls;
+        }
+        std::thread::sleep(std::time::Duration::from_secs(30));
+    }
+}
+
+fn build_status(manifest: &Manifest, found: &FoundRooms) -> StatusResponse {
+    // Listed rooms first (they keep their order), then the ones found; the
+    // page drops a room it reaches twice under two addresses.
+    let mut rooms = manifest.rooms.clone();
+    for url in found.lock().unwrap().iter() {
+        if !rooms.contains(url) {
+            rooms.push(url.clone());
+        }
+    }
     let services = manifest
         .service
         .iter()
@@ -239,7 +282,7 @@ fn build_status(manifest: &Manifest) -> StatusResponse {
         music_assistant: ma_status(manifest),
         services,
         available_jobs: available_jobs(manifest),
-        rooms: manifest.rooms.clone(),
+        rooms,
     }
 }
 
@@ -307,6 +350,12 @@ fn main() {
     // that up without needing a restart.
     let startup_check: Manifest = load_manifest(&manifest_path);
 
+    let found: FoundRooms = Default::default();
+    {
+        let found = found.clone();
+        std::thread::spawn(move || discover_rooms_forever(found));
+    }
+
     let server = Server::http(&bind_addr).unwrap_or_else(|e| {
         eprintln!("cannot bind {bind_addr}: {e}");
         std::process::exit(1);
@@ -327,7 +376,7 @@ fn main() {
                 .with_header(html_header())
                 .boxed(),
 
-            (Method::Get, "/status") => ok_json(serde_json::to_value(build_status(&manifest)).unwrap()),
+            (Method::Get, "/status") => ok_json(serde_json::to_value(build_status(&manifest, &found)).unwrap()),
 
             (Method::Post, path) if path.starts_with("/services/") => {
                 let mut parts = path.trim_start_matches("/services/").splitn(2, '/');

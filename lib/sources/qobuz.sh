@@ -59,7 +59,7 @@ qobuz_install_release() {
 # From source (30-60 min on a Pi 4) - with BUILD=1, or when there's no release
 qobuz_build() {
   info "building pibuz from source (30-60 min on a Pi 4)"
-  run apt-get install -y -qq build-essential pkg-config git libasound2-dev libdbus-1-dev libssl-dev libjack-jackd2-dev
+  apt_install build-essential pkg-config git libasound2-dev libdbus-1-dev libssl-dev libjack-jackd2-dev
   run sudo -u "$AUDIO_USER" sh -c 'command -v cargo >/dev/null || [ -x "$HOME/.cargo/bin/cargo" ] || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal'
   local src; src=$(getent passwd "$AUDIO_USER" | cut -d: -f6)/.cache/pibuz-src
   run rm -rf "$src"

@@ -146,7 +146,7 @@ room_pick_mixer() {
 room_base() {
   say "Base packages, groups, settings"
   run apt-get update -qq
-  run apt-get install -y -qq inotify-tools curl jq alsa-utils psmisc python3 dbus ca-certificates avahi-daemon avahi-utils
+  apt_install inotify-tools curl jq alsa-utils psmisc python3 dbus ca-certificates avahi-daemon avahi-utils
   run groupadd -f audioguard
   run usermod -aG audio,audioguard "$AUDIO_USER"
   id playerui >/dev/null 2>&1 || run useradd --system --no-create-home --shell /usr/sbin/nologin playerui
@@ -253,7 +253,7 @@ fetch_asset() {
 room_build_webui() {
   [ -n "${WEBUI_BUILT:-}" ] && return 0
   info "building playerui and player-guard-helper from source"
-  run apt-get install -y -qq build-essential pkg-config
+  apt_install build-essential pkg-config
   run sudo -u "$AUDIO_USER" sh -c 'command -v cargo >/dev/null || [ -x "$HOME/.cargo/bin/cargo" ] || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal'
   local tdir; tdir=$(getent passwd "$AUDIO_USER" | cut -d: -f6)/.cache/homeaudio-build
   run sudo -u "$AUDIO_USER" sh -c "cd '$HOMEAUDIO/webui' && CARGO_TARGET_DIR='$tdir' \$HOME/.cargo/bin/cargo build --release -p playerui -p player-guard-helper"

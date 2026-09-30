@@ -17,8 +17,10 @@ src_ma_questions() {
     ask MA_URL "Music Assistant address, e.g. http://homeassistant.local:8095" "$url_default"
     [ -n "$MA_URL" ] || die "Music Assistant needs its address"
     conf_set MA_URL "${MA_URL%/}"
-    info "Token: in Music Assistant itself (not Home Assistant):"
-    info "Settings > Profile > Long-lived access tokens > create one, copy it whole."
+    if [ -z "${MA_TOKEN:-}" ] || [ -n "$RECONFIGURE" ]; then
+      info "Token: in Music Assistant itself (not Home Assistant):"
+      info "Settings > Profile > Long-lived access tokens > create one, copy it whole."
+    fi
     ask_secret MA_TOKEN "Music Assistant token (typing is hidden)"
     [ -n "$DRY_RUN" ] && return 0
 
@@ -54,14 +56,14 @@ ma_discover() {
 # HTTP status of an authenticated players/all call (000: no answer at all)
 ma_http_code() {
   curl -s -m 5 -o /dev/null -w '%{http_code}' -X POST "$MA_URL/api" \
-    -H "Content-Type: application/json" -H "Authorization: Bearer $MA_TOKEN" \
+    -H "Content-Type: application/json" -H "Authorization: Bearer ${MA_TOKEN:-}" \
     -d '{"message_id":"install","command":"players/all","args":{}}'
 }
 
 # ma_api <command> [args-json]: Music Assistant's JSON API, result on stdout
 ma_api() {
   curl -fsS -m 5 -X POST "$MA_URL/api" -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $MA_TOKEN" \
+    -H "Authorization: Bearer ${MA_TOKEN:-}" \
     -d "{\"message_id\":\"install\",\"command\":\"$1\",\"args\":${2:-{\}}}"
 }
 
@@ -69,8 +71,9 @@ src_ma_install() {
   say "Music Assistant player (sendspin)"
   local home; home=$(getent passwd "$AUDIO_USER" | cut -d: -f6)
   if [ ! -x "$home/.local/bin/sendspin" ]; then
-    run sudo -u "$AUDIO_USER" sh -c 'command -v uv >/dev/null || [ -x "$HOME/.local/bin/uv" ] || curl -LsSf https://astral.sh/uv/install.sh | sh'
-    run sudo -u "$AUDIO_USER" sh -c '$HOME/.local/bin/uv tool install sendspin'
+    info "installing sendspin (via uv)"
+    run sudo -u "$AUDIO_USER" sh -c 'command -v uv >/dev/null || [ -x "$HOME/.local/bin/uv" ] || curl -LsSf https://astral.sh/uv/install.sh | env UV_NO_MODIFY_PATH=1 INSTALLER_PRINT_QUIET=1 sh'
+    run sudo -u "$AUDIO_USER" sh -c '$HOME/.local/bin/uv tool install -q sendspin 2>&1 | grep -v "is not on your PATH" || true'
   fi
   local device hwvol=""
   device=$(ma_sendspin_device "$home")
@@ -127,9 +130,12 @@ ma_find_player() {
   local i id=""
   info "waiting for Music Assistant to see \"$ROOM_NAME\"..."
   for i in $(seq 1 30); do
+    # players/all answers a plain list (older servers: {"result": [...]});
+    # a failed lookup must never stop the installer
     id=$(ma_api players/all 2>/dev/null | jq -r --arg n "$ROOM_NAME" '
-      (.result // .) | map(select((.display_name // .name) == $n))
-      | (map(select(.player_id | startswith("up"))) + .)[0].player_id // empty')
+      (if type == "object" then .result else . end) // []
+      | map(select((.display_name // .name) == $n))
+      | (map(select(.player_id | startswith("up"))) + .)[0].player_id // empty' 2>/dev/null || true)
     [ -n "$id" ] && break
     sleep 2
   done

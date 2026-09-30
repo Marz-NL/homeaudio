@@ -35,7 +35,7 @@ EOF
 airplay_build() {
   local src=/usr/local/src
   info "building nqptp + shairport-sync (about 10 min on a Pi 4)"
-  run apt-get install -y -qq --no-install-recommends \
+  apt_install --no-install-recommends \
     build-essential git autoconf automake libtool pkg-config xxd \
     libpopt-dev libconfig-dev libasound2-dev avahi-daemon libavahi-client-dev \
     libssl-dev libsoxr-dev libsodium-dev uuid-dev libgcrypt20-dev \

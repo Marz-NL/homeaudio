@@ -9,7 +9,7 @@ src_spotify_questions() { :; }
 
 src_spotify_install() {
   say "Spotify Connect (spotifyd)"
-  run apt-get install -y -qq libasound2t64 libdbus-1-3 dbus
+  apt_install libasound2t64 libdbus-1-3 dbus
   if [ -x /usr/local/bin/spotifyd ] && [ -z "${BUILD:-}" ]; then
     info "already installed: $(/usr/local/bin/spotifyd --version 2>/dev/null)"
   elif ! fetch_binary spotifyd /usr/local/bin/spotifyd; then
@@ -105,7 +105,7 @@ spotify_format() {
 # From source (20-40 min on a Pi 4), with the linear volume patch
 spotify_build() {
   info "building spotifyd $SPOTIFYD_VERSION from source (20-40 min on a Pi 4)"
-  run apt-get install -y -qq build-essential pkg-config git libasound2-dev libdbus-1-dev libssl-dev
+  apt_install build-essential pkg-config git libasound2-dev libdbus-1-dev libssl-dev
   run sudo -u "$AUDIO_USER" sh -c 'command -v cargo >/dev/null || [ -x "$HOME/.cargo/bin/cargo" ] || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal'
   local src; src=$(getent passwd "$AUDIO_USER" | cut -d: -f6)/.cache/spotifyd-src
   run rm -rf "$src"

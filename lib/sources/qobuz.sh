@@ -3,6 +3,8 @@
 # mixer at the top while it plays ([volume] software_sources).
 
 PIBUZ_REPO=https://github.com/PhilipVinc/pibuz
+# pibuz publishes no binaries: this project's release builds this tag, unchanged
+PIBUZ_VERSION=v2.5.1
 
 src_qobuz_questions() { :; }
 
@@ -10,7 +12,7 @@ src_qobuz_install() {
   say "Qobuz Connect (pibuz)"
   if [ -x /usr/local/bin/pibuz ] && [ -z "${BUILD:-}" ]; then
     info "already installed: $(/usr/local/bin/pibuz --version 2>/dev/null | head -1)"
-  elif [ -n "${BUILD:-}" ] || ! qobuz_install_release; then
+  elif ! fetch_binary pibuz /usr/local/bin/pibuz && { [ -n "${BUILD:-}" ] || ! qobuz_install_release; }; then
     qobuz_build
   fi
 
@@ -38,31 +40,30 @@ EOF
   qobuz_settings
 }
 
-# Latest release: pibuz-<version>-linux-aarch64.tar.gz, checksum-verified
+# pibuz's own release, should it ever ship pibuz-<version>-linux-aarch64.tar.gz
 qobuz_install_release() {
   local tag ver dir tmp
   tag=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$PIBUZ_REPO/releases/latest" | sed 's#.*/tag/##')
-  case "$tag" in v[0-9]*) ;; *) warn "no pibuz release found"; return 1 ;; esac
+  case "$tag" in v[0-9]*) ;; *) return 1 ;; esac
   ver=${tag#v}; dir="pibuz-$ver-linux-aarch64"; tmp=$(mktemp -d)
-  info "downloading pibuz $tag"
-  if curl -fsSL "$PIBUZ_REPO/releases/download/$tag/$dir.tar.gz" -o "$tmp/$dir.tar.gz" &&
-     curl -fsSL "$PIBUZ_REPO/releases/download/$tag/$dir.tar.gz.sha256" -o "$tmp/$dir.tar.gz.sha256" &&
+  if curl -fsL "$PIBUZ_REPO/releases/download/$tag/$dir.tar.gz" -o "$tmp/$dir.tar.gz" &&
+     curl -fsL "$PIBUZ_REPO/releases/download/$tag/$dir.tar.gz.sha256" -o "$tmp/$dir.tar.gz.sha256" &&
      (cd "$tmp" && sha256sum -c --quiet "$dir.tar.gz.sha256") &&
      tar -xzf "$tmp/$dir.tar.gz" -C "$tmp"; then
     run install -m 755 "$tmp/$dir/pibuz" /usr/local/bin/pibuz
     rm -rf "$tmp"; return 0
   fi
-  rm -rf "$tmp"; warn "pibuz download or checksum failed"; return 1
+  rm -rf "$tmp"; return 1
 }
 
 # From source (30-60 min on a Pi 4) - with BUILD=1, or when there's no release
 qobuz_build() {
   info "building pibuz from source (30-60 min on a Pi 4)"
-  run apt-get install -y -qq build-essential pkg-config git libasound2-dev libdbus-1-dev libssl-dev
+  run apt-get install -y -qq build-essential pkg-config git libasound2-dev libdbus-1-dev libssl-dev libjack-jackd2-dev
   run sudo -u "$AUDIO_USER" sh -c 'command -v cargo >/dev/null || [ -x "$HOME/.cargo/bin/cargo" ] || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal'
   local src; src=$(getent passwd "$AUDIO_USER" | cut -d: -f6)/.cache/pibuz-src
   run rm -rf "$src"
-  run sudo -u "$AUDIO_USER" git clone -q --depth 1 "$PIBUZ_REPO" "$src"
+  run sudo -u "$AUDIO_USER" git clone -q --depth 1 --branch "$PIBUZ_VERSION" "$PIBUZ_REPO" "$src"
   run sudo -u "$AUDIO_USER" sh -c "cd '$src' && \$HOME/.cargo/bin/cargo build --release -p pibuz"
   run install -m 755 "$src/target/release/pibuz" /usr/local/bin/pibuz
 }

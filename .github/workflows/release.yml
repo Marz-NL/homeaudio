@@ -20,6 +20,7 @@ permissions:
 
 env:
   SPOTIFYD_VERSION: v0.4.2   # keep in sync with lib/sources/spotify.sh
+  PIBUZ_VERSION: v2.5.1      # keep in sync with lib/sources/qobuz.sh (pibuz publishes no binaries)
 
 jobs:
   build:
@@ -30,7 +31,7 @@ jobs:
         run: |
           apt-get update -qq
           apt-get install -y -qq build-essential pkg-config git curl ca-certificates \
-            libasound2-dev libdbus-1-dev libssl-dev
+            libasound2-dev libdbus-1-dev libssl-dev libjack-jackd2-dev
           curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
@@ -51,12 +52,20 @@ jobs:
           cd /tmp/spotifyd
           cargo build --release --locked --no-default-features --features alsa_backend,dbus_mpris
 
+      - name: pibuz (upstream tag, unchanged)
+        run: |
+          git clone -q --depth 1 --branch "$PIBUZ_VERSION" https://github.com/PhilipVinc/pibuz /tmp/pibuz
+          cd /tmp/pibuz
+          cargo build --release --locked -p pibuz
+
       - name: Collect assets
         run: |
           mkdir dist
           cp webui/target/release/playerui              dist/playerui-linux-aarch64
           cp webui/target/release/player-guard-helper   dist/player-guard-helper-linux-aarch64
           cp /tmp/spotifyd/target/release/spotifyd      dist/spotifyd-linux-aarch64
+          cp /tmp/pibuz/target/release/pibuz            dist/pibuz-linux-aarch64
+          cp /tmp/pibuz/LICENSE*                        dist/PIBUZ-LICENSE.txt
           cp patches/spotifyd-linear-volume.patch       dist/
           cp webui/THIRD-PARTY-LICENSES.txt             dist/
           cat > dist/SPOTIFYD-SOURCE.md <<EOF

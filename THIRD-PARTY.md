@@ -16,6 +16,7 @@ homeaudio is MIT (see `LICENSE`), except where noted below.
 |---|---|
 | `playerui`, `player-guard-helper` (this project) and the Rust crates linked into them | MIT; each crate's license text is in the release's `THIRD-PARTY-LICENSES.txt` |
 | [spotifyd](https://github.com/Spotifyd/spotifyd) v0.4.2 with `patches/spotifyd-linear-volume.patch` | GPL-3.0 - the source is that upstream tag plus the patch, both linked from the release (`SPOTIFYD-SOURCE.md`) |
+| [pibuz](https://github.com/PhilipVinc/pibuz) v2.5.1, unchanged (pibuz publishes no binaries itself) | MIT - its license is in the release as `PIBUZ-LICENSE.txt` |
 
 ## Installed from their own sources by `install.sh`
 
@@ -24,7 +25,6 @@ projects when you choose the source that needs them.
 
 | What | Used for | License |
 |---|---|---|
-| [pibuz](https://github.com/PhilipVinc/pibuz) (release download) | Qobuz Connect | MIT |
 | [shairport-sync](https://github.com/mikebrady/shairport-sync) by Mike Brady, building on James Laird's original shairport (built from source) | AirPlay 2 | MIT-style, per file (see its `LICENSES`) |
 | [nqptp](https://github.com/mikebrady/nqptp) by Mike Brady (built from source) | AirPlay 2 clock sync | GPL-2.0 |
 | [sendspin](https://github.com/Sendspin/sendspin-python-cli) (via uv) | Music Assistant player | Apache-2.0 |

@@ -128,6 +128,9 @@ if [ "$1" = --reload ]; then
 else
   reload=
   echo "$1 $2 $3" > $RUN/stream
+  # CamillaDSP creates its log as this stream's user; another source's user
+  # can't append to it, but may replace it (the directory is the audio group's)
+  [ ! -e $RUN/camilladsp.log ] || [ -w $RUN/camilladsp.log ] || rm -f $RUN/camilladsp.log
 fi
 # The plugin's format names -> CamillaDSP's
 case "$1" in

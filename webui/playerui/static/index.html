@@ -169,6 +169,8 @@
   }
   .levels-stack { display: flex; flex-direction: row; gap: 2px; }
   .led { width: 5px; height: 12px; border-radius: 2px; background: var(--meter-off); }
+  .levels-scope { width: 44px; height: 22px; border-radius: 3px; color: var(--now-text);
+    background: rgba(255, 255, 255, 0.04); }
   .led.g.lit { background: var(--meter-g); }
   .led.y.lit { background: var(--meter-y); }
   .led.r.lit { background: var(--meter-r); }
@@ -406,6 +408,36 @@ let meterBase = null;
 let meterTimer = null;
 let meterBusy = false;
 
+// Scope: the recent level (the louder channel's RMS), one point per pixel
+// column, about four seconds at ten a second. The trace takes the card's text
+// colour at half strength, so it follows the theme.
+const SCOPE_POINTS = 44;
+const scopeHistory = [];
+
+function pushScope(db) {
+  scopeHistory.push(db);
+  if (scopeHistory.length > SCOPE_POINTS) scopeHistory.shift();
+}
+
+function drawScope(wrap) {
+  const c = wrap.querySelector("canvas.levels-scope");
+  if (!c) return;
+  const ctx = c.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const w = c.width, h = c.height;
+  ctx.clearRect(0, 0, w, h);
+  ctx.globalAlpha = 0.5;
+  ctx.strokeStyle = getComputedStyle(c).color;
+  ctx.lineWidth = dpr;
+  ctx.beginPath();
+  scopeHistory.forEach((db, i) => {
+    const x = (SCOPE_POINTS - scopeHistory.length + i) * (w / SCOPE_POINTS);
+    const y = h - ((Math.max(-40, db) + 40) / 40) * h;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+}
+
 function renderMeters() {
   const wrap = document.createElement("div");
   wrap.className = "levels";
@@ -419,6 +451,12 @@ function renderMeters() {
     });
     wrap.append(stack);
   }
+  const dpr = window.devicePixelRatio || 1;
+  const scope = document.createElement("canvas");
+  scope.className = "levels-scope";
+  scope.width = 44 * dpr;
+  scope.height = 22 * dpr;
+  wrap.append(scope);
   return wrap;
 }
 
@@ -456,15 +494,21 @@ async function meterTick() {
     const m = await fetchJSON(`${meterBase}/meters`);
     if (!m.available) {
       paintMeters(wrap, null, now);
+      pushScope(-120);
     } else {
       const pick = (arr, ch) => arr[ch] ?? arr[0];
+      const rms = [0, 1].map((ch) => pick(m.playback.rms, ch));
       paintMeters(wrap, {
-        rms: [0, 1].map((ch) => pick(m.playback.rms, ch)),
+        rms,
         peak: [0, 1].map((ch) => pick(m.playback.peak, ch)),
       }, now);
+      pushScope(Math.max(...rms));
     }
+    drawScope(wrap);
   } catch {
     paintMeters(wrap, null, now);
+    pushScope(-120);
+    drawScope(wrap);
   } finally {
     meterBusy = false;
   }

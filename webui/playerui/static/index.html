@@ -93,7 +93,7 @@
     display: flex; align-items: center; justify-content: center; font-size: 3rem;
     object-fit: cover; box-shadow: 0 12px 30px rgba(0,0,0,0.35);
   }
-  .now-hero .now-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .now-hero .now-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
   .now-hero .now-track { font-size: 1.25rem; font-weight: 700; text-wrap: balance; }
   .now-hero .now-album { color: var(--now-muted); font-size: 1rem; }
   .now-hero .now-artist { color: var(--now-muted); font-size: 1rem; }
@@ -159,23 +159,20 @@
   .form-error { color: var(--danger); font-size: 0.82rem; }
   .hint { color: var(--muted); font-size: 0.82rem; margin: 4px 0; }
 
-  /* Levels: two vertical LED bars, nine segments each (five green, three
-     yellow, one red), dark green when off. Kept quiet on purpose. */
-  :root {
-    --meter-off: #0b1d13; --meter-g: #2fbf71; --meter-y: #e3b93a;
-    --meter-r: #e5484d; --meter-hold: #e6fbef;
+  /* Levels, inside the now-playing card: two thin LED bars of nine segments
+     (five green, three yellow, one red) in a fixed-width column on the right.
+     Off segments are a very dark green; lit ones are dimmed on purpose. */
+  .now-hero .levels {
+    flex: 0 0 44px; display: flex; gap: 5px; justify-content: flex-end;
+    --meter-off: #0d1f15; --meter-g: #2c8f5a; --meter-y: #b08d2a;
+    --meter-r: #b5474c; --meter-hold: #bfeecf;
   }
-  .levels { display: flex; flex-direction: column; gap: 10px; align-items: center; }
-  .levels-bars { display: flex; gap: 18px; }
-  .levels-col { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-  .levels-stack { display: flex; flex-direction: column-reverse; gap: 3px; width: 26px; }
-  .seg { height: 11px; border-radius: 2px; background: var(--meter-off); }
+  .levels-stack { display: flex; flex-direction: column-reverse; gap: 2px; width: 7px; }
+  .seg { height: 5px; border-radius: 1px; background: var(--meter-off); }
   .seg.g.lit { background: var(--meter-g); }
   .seg.y.lit { background: var(--meter-y); }
   .seg.r.lit { background: var(--meter-r); }
-  .seg.hold { box-shadow: inset 0 0 0 2px var(--meter-hold); }
-  .levels-col .label { font-size: 0.72rem; color: var(--muted); }
-  .levels-status { text-align: center; }
+  .seg.hold { box-shadow: inset 0 0 0 1px var(--meter-hold); }
 
   /* Job log */
   .log-panel {
@@ -336,7 +333,7 @@ function renderPane(base, data, job) {
 
   const right = document.createElement("div");
   right.className = "pane-right";
-  right.append(renderNowPlaying(data), renderLevels(base));
+  right.append(renderNowPlaying(data, base));
 
   wrap.append(left, right);
   return wrap;
@@ -357,7 +354,7 @@ function renderResumedJob(base, job) {
   return section;
 }
 
-function renderNowPlaying(data) {
+function renderNowPlaying(data, base) {
   const section = document.createElement("section");
   section.className = "now-playing-section";
   const label = document.createElement("p");
@@ -391,101 +388,94 @@ function renderNowPlaying(data) {
     card.className = "now-hero idle";
     card.textContent = `Nothing playing (${DAC_LABEL[data.dac_owner] || data.dac_owner})`;
   }
+  startMeters(base);
+  card.append(renderMeters());
   section.append(card);
   return section;
 }
 
-// Levels: the room's live output, from playerui's /meters (which reads
-// CamillaDSP). The LEDs follow RMS, the way a VU meter does; the peak-hold
-// marker follows the peak and lets go after a moment. Thresholds are dBFS,
-// bottom segment first: five green, three yellow, one red.
+// Levels, drawn at the right of the now-playing card, from playerui's /meters
+// (which reads CamillaDSP). The LEDs follow RMS, the way a VU meter does; the
+// peak-hold marker follows the peak and lets go after a moment. Thresholds are
+// dBFS, bottom segment first: five green, three yellow, one red. One poller
+// serves whichever card is on screen, so re-rendering the card never adds one.
 const METER_THRESHOLDS = [-36, -30, -24, -18, -12, -9, -6, -3, -1];
 const METER_COLORS = ["g", "g", "g", "g", "g", "y", "y", "y", "r"];
 const PEAK_HOLD_MS = 1500;
+const meterHold = [{ hold: -Infinity, holdAt: 0 }, { hold: -Infinity, holdAt: 0 }];
+let meterBase = null;
+let meterTimer = null;
+let meterBusy = false;
 
-function renderLevels(base) {
-  const section = document.createElement("section");
-  const label = document.createElement("p");
-  label.className = "section-label";
-  label.textContent = "Levels";
-  section.append(label);
-
-  const card = document.createElement("div");
-  card.className = "card levels";
-  const bars = document.createElement("div");
-  bars.className = "levels-bars";
-  const channels = ["L", "R"].map((name) => {
-    const col = document.createElement("div");
-    col.className = "levels-col";
+function renderMeters() {
+  const wrap = document.createElement("div");
+  wrap.className = "levels";
+  for (let ch = 0; ch < 2; ch++) {
     const stack = document.createElement("div");
     stack.className = "levels-stack";
-    const segs = METER_THRESHOLDS.map((_, i) => {
+    METER_THRESHOLDS.forEach((_, i) => {
       const seg = document.createElement("div");
       seg.className = `seg ${METER_COLORS[i]}`;
       stack.append(seg);
-      return seg;
     });
-    const caption = document.createElement("div");
-    caption.className = "label";
-    caption.textContent = name;
-    col.append(stack, caption);
-    bars.append(col);
-    return { segs, hold: -Infinity, holdAt: 0 };
-  });
-  const status = document.createElement("div");
-  status.className = "hint levels-status";
-  card.append(bars, status);
-  section.append(card);
+    wrap.append(stack);
+  }
+  return wrap;
+}
 
-  const clear = (channel) => {
-    channel.hold = -Infinity;
-    channel.segs.forEach((seg) => seg.classList.remove("lit", "hold"));
-  };
-
-  const paint = (channel, rmsDb, peakDb, now) => {
+function paintMeters(wrap, levels, now) {
+  const stacks = wrap.querySelectorAll(".levels-stack");
+  stacks.forEach((stack, ch) => {
+    const segs = Array.from(stack.children);
+    const state = meterHold[ch];
+    if (!levels) {
+      state.hold = -Infinity;
+      segs.forEach((seg) => seg.classList.remove("lit", "hold"));
+      return;
+    }
+    const rmsDb = levels.rms[ch];
+    const peakDb = levels.peak[ch];
     let top = -1;
     METER_THRESHOLDS.forEach((t, i) => { if (rmsDb >= t) top = i; });
-    if (peakDb >= channel.hold || now - channel.holdAt > PEAK_HOLD_MS) {
-      channel.hold = peakDb;
-      channel.holdAt = now;
+    if (peakDb >= state.hold || now - state.holdAt > PEAK_HOLD_MS) {
+      state.hold = peakDb;
+      state.holdAt = now;
     }
     let holdIdx = -1;
-    METER_THRESHOLDS.forEach((t, i) => { if (channel.hold >= t) holdIdx = i; });
-    channel.segs.forEach((seg, i) => {
+    METER_THRESHOLDS.forEach((t, i) => { if (state.hold >= t) holdIdx = i; });
+    segs.forEach((seg, i) => {
       seg.classList.toggle("lit", i <= top);
       seg.classList.toggle("hold", i === holdIdx && holdIdx > top);
     });
-  };
+  });
+}
 
-  let busy = false;
-  const tick = async () => {
-    if (busy) return;
-    busy = true;
-    try {
-      const m = await fetchJSON(`${base}/meters`);
-      if (!m.available) {
-        channels.forEach(clear);
-        status.textContent = "Shows while this room plays through CamillaDSP";
-        return;
-      }
-      status.textContent = "";
-      const now = performance.now();
-      channels.forEach((channel, ch) => {
-        const rms = m.playback.rms[ch] ?? m.playback.rms[0];
-        const peak = m.playback.peak[ch] ?? m.playback.peak[0];
-        paint(channel, rms, peak, now);
-      });
-    } catch (e) {
-      channels.forEach(clear);
-      status.textContent = `Levels unavailable: ${e.message}`;
-    } finally {
-      busy = false;
+async function meterTick() {
+  const wrap = document.querySelector("#pane .levels");
+  if (!wrap || !meterBase || meterBusy) return;
+  meterBusy = true;
+  const now = performance.now();
+  try {
+    const m = await fetchJSON(`${meterBase}/meters`);
+    if (!m.available) {
+      paintMeters(wrap, null, now);
+    } else {
+      const pick = (arr, ch) => arr[ch] ?? arr[0];
+      paintMeters(wrap, {
+        rms: [0, 1].map((ch) => pick(m.playback.rms, ch)),
+        peak: [0, 1].map((ch) => pick(m.playback.peak, ch)),
+      }, now);
     }
-  };
-  tick();
-  const id = setInterval(tick, 100);
-  activePollers.push(id);
-  return section;
+  } catch {
+    paintMeters(wrap, null, now);
+  } finally {
+    meterBusy = false;
+  }
+}
+
+function startMeters(base) {
+  meterBase = base;
+  if (!meterTimer) meterTimer = setInterval(meterTick, 100);
 }
 
 // A name/right-cluster row shared by every "connected"-style card (Music
@@ -925,7 +915,7 @@ async function refreshNowPlayingOnly() {
     const old = document.querySelector("#pane .now-playing-section");
     if (!old || results[activeIndex] !== r) return;
     r.data = data;
-    old.replaceWith(renderNowPlaying(data));
+    old.replaceWith(renderNowPlaying(data, r.base));
   } catch {}
 }
 

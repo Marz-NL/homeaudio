@@ -1,0 +1,14 @@
+[Unit]
+Description=homeaudio: CamillaDSP from the loopback to the DAC, with meters
+After=sound.target
+Wants=sound.target
+
+[Service]
+User=marz
+Group=audio
+ExecStart=/bin/sh /usr/local/lib/homeaudio/meter-chain
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

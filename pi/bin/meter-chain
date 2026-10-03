@@ -1,0 +1,61 @@
+#!/bin/sh
+# homeaudio: CamillaDSP between the sources and the DAC, which also gives the
+# meters their levels. Sources play into the loopback card (hw:Loopback,0,0);
+# this follows that stream and runs CamillaDSP on the card's other end
+# (hw:Loopback,1,0), bypassed (in = out), feeding the DAC. CamillaDSP runs only
+# while something plays, so the DAC is free the rest of the time.
+set -u
+LB=/proc/asound/card1                 # snd-aloop, loaded by /etc/modules-load.d
+RUN=/run/homeaudio-cdsp
+PORT=5678
+DAC=$(sed -n 's/^USB_CARD=//p' /etc/homeaudio/cdsp-dac)
+mkdir -p "$RUN"
+cur=""; pid=""
+
+stop_cdsp() {
+  [ -n "$pid" ] && kill "$pid" 2>/dev/null && wait "$pid" 2>/dev/null
+  pid=""; cur=""
+}
+
+write_config() {   # $1 = ALSA format, $2 = rate, $3 = channels
+  # ALSA's names -> CamillaDSP's
+  case "$1" in
+    S24_3LE) fmt=S24_3_LE ;; S24_LE) fmt=S24_4_LE ;;
+    FLOAT_LE) fmt=F32_LE ;; FLOAT64_LE) fmt=F64_LE ;; *) fmt=$1 ;;
+  esac
+  cat > "$RUN/config.yml.new" <<CFG
+devices:
+  samplerate: $2
+  chunksize: 1024
+  capture:
+    type: Alsa
+    channels: $3
+    device: "hw:Loopback,1,0"
+    format: $fmt
+  playback:
+    type: Alsa
+    channels: $3
+    device: "hw:CARD=$DAC,DEV=0"
+CFG
+  mv -f "$RUN/config.yml.new" "$RUN/config.yml"
+}
+
+while :; do
+  hw=$LB/pcm0p/sub0/hw_params
+  if [ -r "$hw" ] && grep -q '^rate:' "$hw"; then
+    fmt=$(sed -n 's/^format: //p' "$hw")
+    rate=$(sed -n 's/^rate: \([0-9]*\).*/\1/p' "$hw")
+    ch=$(sed -n 's/^channels: //p' "$hw")
+    key="$fmt $rate $ch"
+    if [ "$key" != "$cur" ]; then
+      stop_cdsp
+      write_config "$fmt" "$rate" "$ch"
+      camilladsp -o "$RUN/camilladsp.log" -p "$PORT" -a 127.0.0.1 "$RUN/config.yml" &
+      pid=$!
+      cur=$key
+    fi
+  else
+    stop_cdsp
+  fi
+  sleep 0.2
+done

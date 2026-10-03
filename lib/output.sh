@@ -1,8 +1,9 @@
 # Output rate. Two ways out of a room:
 #   direct      every source straight on the DAC, at the music's own rate
-#               (bit-perfect, the default)
-#   camilladsp  every source plays into CamillaDSP, which feeds the DAC: at
-#               the music's own rate (bit-perfect, passed through untouched)
+#               (no conversion; for a room that must not run CamillaDSP at all)
+#   camilladsp  the default: every source plays into CamillaDSP, which feeds
+#               the DAC. At the music's own rate it's a bypass (in = out, no
+#               conversion, passed through untouched)
 #               or converted to one fixed rate - for a DAC feeding gear that
 #               runs at a fixed clock, like an audio interface's S/PDIF input
 #               in a studio. Switching between those is live: CamillaDSP
@@ -16,13 +17,14 @@ OUT_RATES="native 44100 48000 direct"
 OUT_TARGET=/etc/homeaudio/output-rate       # native | 44100 | 48000, read per stream
 OUT_RUN=/run/homeaudio-cdsp                 # the stream's format and CamillaDSP's config
 OUT_GEN=/usr/local/lib/homeaudio/cdsp-config
+OUT_METER_PORT=5678                         # CamillaDSP's websocket: live peak/RMS for playerui's meters, localhost only
 CAMILLADSP_VERSION=v4.1.3
 ALSA_CDSP_COMMIT=1a1b0a3e452f87372881ffaa9391a11d0ff6d541   # github.com/scripple/alsa_cdsp
 ALSA_CDSP_BUILD="$ALSA_CDSP_COMMIT+homeaudio1"   # + patches/alsa-cdsp-homeaudio.patch
 ALSA_CDSP_STAMP=/usr/local/lib/homeaudio/alsa-cdsp.build
 ALSA_CDSP_SO=/usr/lib/$(uname -m)-linux-gnu/alsa-lib/libasound_module_pcm_cdsp.so
 
-out_cdsp()  { [ "${OUTPUT_ENGINE:-direct}" = camilladsp ]; }
+out_cdsp()  { [ "${OUTPUT_ENGINE:-camilladsp}" = camilladsp ]; }
 out_fixed() { [ "${OUTPUT_RATE:-native}" != native ]; }
 
 # The ALSA device the sources play on
@@ -33,7 +35,7 @@ out_device() {
 # In words, for messages and the web page
 out_label() {
   case "${OUTPUT_RATE:-native}" in
-    native) echo "bit-perfect" ;;
+    native) echo "no conversion" ;;
     44100)  echo "fixed 44.1 kHz" ;;
     48000)  echo "fixed 48 kHz" ;;
     *)      echo "${OUTPUT_RATE}" ;;
@@ -66,7 +68,7 @@ pcm.${OUT_PCM}_cdsp {
     config_out "$OUT_RUN/config.yml"
     channels 2
     rates = [ 44100 48000 88200 96000 176400 192000 352800 384000 ]
-    cargs [ -o "$OUT_RUN/camilladsp.log" ]
+    cargs [ -o "$OUT_RUN/camilladsp.log" -p $OUT_METER_PORT -a 127.0.0.1 ]
 }
 # The name the sources use. A pass-through, only so it can carry a hint:
 # PortAudio (Music Assistant's sendspin) lists devices by their hint, and the
@@ -144,7 +146,7 @@ case "$1" in
 esac
 target=$(cat /etc/homeaudio/output-rate 2>/dev/null || echo native)
 if [ "$target" = native ] || [ "$target" = "$2" ]; then
-  # bit-perfect: the stream's own rate, samples passed through untouched
+  # no conversion: the stream's own rate, samples passed through untouched
   out=$2 convert=
 else
   # converted; 1 dB headroom, as resampling can overshoot near full scale
@@ -234,10 +236,11 @@ out_set_rate() {
     say "Output: $(out_label) (switched live)"
     return 0
   fi
-  # direct -> direct: nothing to do
-  if ! out_cdsp && { [ "$rate" = direct ] || [ "$rate" = native ]; }; then
+  # direct -> direct: nothing to do. (native from direct is not that: it moves
+  # the room onto CamillaDSP in bypass, the default now)
+  if ! out_cdsp && [ "$rate" = direct ]; then
     conf_set OUTPUT_RATE native
-    say "Output: bit-perfect, straight on the DAC (already)"
+    say "Output: no conversion, straight on the DAC (already)"
     return 0
   fi
 
@@ -248,7 +251,7 @@ out_set_rate() {
   fi
   if [ "$rate" = direct ]; then
     conf_set OUTPUT_ENGINE direct; conf_set OUTPUT_RATE native; conf_set WANT_CAMILLADSP n
-    say "Output: bit-perfect, straight on the DAC (CamillaDSP off)"
+    say "Output: no conversion, straight on the DAC (CamillaDSP off)"
   else
     conf_set OUTPUT_ENGINE camilladsp; conf_set OUTPUT_RATE "$rate"; conf_set WANT_CAMILLADSP y
     say "Output: $(out_label), through CamillaDSP - from now on switching is live"

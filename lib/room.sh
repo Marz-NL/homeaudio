@@ -105,18 +105,41 @@ room_adopt() {
 
 # ---------------------------------------------------------------- questions
 
+# The room's name: this machine's own hostname, or a custom one. Never taken
+# from another Pi's answers, so a copied install.conf can't rename this room.
+room_pick_name() {
+  local host; host=$(uname -n)
+  if [ -n "${ROOM_NAME:-}" ] && [ -z "$RECONFIGURE" ]; then
+    remembered "Room name" "$ROOM_NAME"; return 0
+  fi
+  if [ -n "$ASSUME_YES" ] || [ ! -t 0 ]; then
+    conf_set ROOM_NAME "${host^}"; return 0
+  fi
+  local choice custom
+  info "Room name (shown in the apps):"
+  info "  1) ${host^}  - this machine's hostname"
+  info "  2) a custom name"
+  read -r -p "    Choose 1 or 2 [1]: " choice
+  case "${choice:-1}" in
+    1) conf_set ROOM_NAME "${host^}" ;;
+    2) read -r -p "    Custom room name: " custom
+       [ -n "$custom" ] || die "no room name given"
+       conf_set ROOM_NAME "$custom" ;;
+    *) die "answer 1 or 2" ;;
+  esac
+}
+
 room_questions() {
   say "About this room"
   ask AUDIO_USER "User the audio services run as" "${SUDO_USER:-pi}"
   id "$AUDIO_USER" >/dev/null 2>&1 || die "user '$AUDIO_USER' does not exist"
-  local host; host=$(uname -n)
-  ask ROOM_NAME "Room name (shown in the apps)" "${host^}"
+  room_pick_name
 
   room_pick_dac
   room_pick_mixer
 
   say "Output"
-  info "Bit-perfect by default: every source straight on the DAC, at the music's own rate."
+  info "No conversion by default: every source straight on the DAC, at the music's own rate."
   info "A studio (a DAC into an audio interface at a fixed 44.1 or 48 kHz) wants a"
   info "sample-rate converter: CamillaDSP, switched live in the web page."
   ask_yesno WANT_CAMILLADSP "Sample-rate converter (CamillaDSP)" n
@@ -379,11 +402,11 @@ add_airplay2 = "$HOMEAUDIO/pi/jobs/add-airplay.sh"
 add_ma = "$HOMEAUDIO/pi/jobs/add-ma.sh"
 set_rate = "$HOMEAUDIO/pi/jobs/set-rate.sh"
 
-# Output: "native" = bit-perfect, or a fixed rate every source is converted to.
+# Output: "native" = no conversion, or a fixed rate every source is converted to.
 # engine "camilladsp" switches live; "direct" = sources straight on the DAC
 [output]
 rate = "${OUTPUT_RATE:-native}"
-engine = "${OUTPUT_ENGINE:-direct}"
+engine = "${OUTPUT_ENGINE:-camilladsp}"
 EOF
     if [ -n "${MIXER_CONTROL:-}" ]; then
       cat <<EOF

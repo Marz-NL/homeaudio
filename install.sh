@@ -3,7 +3,7 @@
 #
 #   sudo ./install.sh room             a Pi with a DAC: player-guard, playerui, sources
 #   sudo ./install.sh add <source>     add a source to a room later: ma | qobuz | spotify | airplay
-#   sudo ./install.sh rate <rate>      output: native (bit-perfect) | 44100 | 48000 (CamillaDSP,
+#   sudo ./install.sh rate <rate>      output: native (no conversion) | 44100 | 48000 (CamillaDSP,
 #                                      switched live) | direct (no CamillaDSP, the default)
 #   ./install.sh hub                   a Docker host: one overview page for every room
 #   sudo ./install.sh heos             bridge a HEOS speaker to Qobuz Connect (Pi or homelab)

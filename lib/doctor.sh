@@ -35,10 +35,10 @@ doctor_room() {
   rate=$(sed -n 's/^rate = "\(.*\)"/\1/p' /etc/player-guard-services.toml)
   engine=$(sed -n 's/^engine = "\(.*\)"/\1/p' /etc/player-guard-services.toml)
   OUTPUT_RATE=${rate:-native}
-  OUTPUT_ENGINE=${engine:-direct}
+  OUTPUT_ENGINE=${engine:-camilladsp}
   if ! out_cdsp; then
     if out_fixed; then bad "output is set to $(out_label) without CamillaDSP" "sudo ./install.sh rate ${rate}"
-    else ok "output: bit-perfect, straight on the DAC"; fi
+    else ok "output: no conversion, straight on the DAC"; fi
   elif [ ! -f "$OUT_CONF" ] || [ ! -x /usr/local/bin/camilladsp ] || [ ! -f "$ALSA_CDSP_SO" ] || [ ! -x "$OUT_GEN" ]; then
     bad "output goes through CamillaDSP, but part of it is missing" "sudo ./install.sh rate direct && sudo ./install.sh rate ${rate}"
   elif [ "$(cat "$OUT_TARGET" 2>/dev/null)" != "$OUTPUT_RATE" ]; then

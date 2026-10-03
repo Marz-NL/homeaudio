@@ -68,7 +68,7 @@ pcm.${OUT_PCM}_cdsp {
     config_out "$OUT_RUN/config.yml"
     channels 2
     rates = [ 44100 48000 88200 96000 176400 192000 352800 384000 ]
-    cargs [ -o "$OUT_RUN/camilladsp.log" -p $OUT_METER_PORT -a 127.0.0.1 ]
+    cargs [ -o "$OUT_RUN/camilladsp.log" -p "$OUT_METER_PORT" -a "127.0.0.1" ]
 }
 # The name the sources use. A pass-through, only so it can carry a hint:
 # PortAudio (Music Assistant's sendspin) lists devices by their hint, and the
@@ -229,8 +229,8 @@ out_set_rate() {
   if out_cdsp && [ "$rate" != direct ]; then
     conf_set OUTPUT_RATE "$rate"
     echo "$rate" | write_file "$OUT_TARGET"
-    out_install_camilladsp    # this version's plugin and generator,
-    out_write_generator       # in case the repo was updated
+    out_write_alsa_conf       # this version's plugin, generator and ALSA device,
+                              # in case the repo was updated
     run "$OUT_GEN" --reload
     room_manifest
     say "Output: $(out_label) (switched live)"

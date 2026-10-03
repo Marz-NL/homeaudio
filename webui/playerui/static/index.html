@@ -511,10 +511,10 @@ function pollGuardLog(base, panel) {
   return id;
 }
 
-// Output: bit-perfect, or one fixed rate for everything (for gear locked to
+// Output: no conversion, or one fixed rate for everything (for gear locked to
 // a rate, like a DAW's S/PDIF input). Switching runs install.sh rate as a job:
 // live through CamillaDSP; the first fixed rate moves the room onto it.
-const RATE_CHOICES = [["native", "Bit-perfect"], ["44100", "44.1 kHz"], ["48000", "48 kHz"]];
+const RATE_CHOICES = [["native", "No conversion"], ["44100", "44.1 kHz"], ["48000", "48 kHz"]];
 
 function renderOutputCard(base, data) {
   const current = data.output.rate;
@@ -525,7 +525,7 @@ function renderOutputCard(base, data) {
   const note = document.createElement("div");
   note.className = "hint";
   note.textContent = current === "native"
-    ? "Each track at its own rate, untouched."
+    ? "Each track at its own rate, with no conversion."
     : "Everything converted to one rate by CamillaDSP. Match it to your DAW session.";
   card.append(note);
 

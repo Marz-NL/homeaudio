@@ -159,6 +159,24 @@
   .form-error { color: var(--danger); font-size: 0.82rem; }
   .hint { color: var(--muted); font-size: 0.82rem; margin: 4px 0; }
 
+  /* Levels: two vertical LED bars, nine segments each (five green, three
+     yellow, one red), dark green when off. Kept quiet on purpose. */
+  :root {
+    --meter-off: #0b1d13; --meter-g: #2fbf71; --meter-y: #e3b93a;
+    --meter-r: #e5484d; --meter-hold: #e6fbef;
+  }
+  .levels { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+  .levels-bars { display: flex; gap: 18px; }
+  .levels-col { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .levels-stack { display: flex; flex-direction: column-reverse; gap: 3px; width: 26px; }
+  .seg { height: 11px; border-radius: 2px; background: var(--meter-off); }
+  .seg.g.lit { background: var(--meter-g); }
+  .seg.y.lit { background: var(--meter-y); }
+  .seg.r.lit { background: var(--meter-r); }
+  .seg.hold { box-shadow: inset 0 0 0 2px var(--meter-hold); }
+  .levels-col .label { font-size: 0.72rem; color: var(--muted); }
+  .levels-status { text-align: center; }
+
   /* Job log */
   .log-panel {
     margin-top: 10px; background: #0c0c0f; color: #d7d7dc; border-radius: 10px;
@@ -318,7 +336,7 @@ function renderPane(base, data, job) {
 
   const right = document.createElement("div");
   right.className = "pane-right";
-  right.append(renderNowPlaying(data));
+  right.append(renderNowPlaying(data), renderLevels(base));
 
   wrap.append(left, right);
   return wrap;
@@ -374,6 +392,99 @@ function renderNowPlaying(data) {
     card.textContent = `Nothing playing (${DAC_LABEL[data.dac_owner] || data.dac_owner})`;
   }
   section.append(card);
+  return section;
+}
+
+// Levels: the room's live output, from playerui's /meters (which reads
+// CamillaDSP). The LEDs follow RMS, the way a VU meter does; the peak-hold
+// marker follows the peak and lets go after a moment. Thresholds are dBFS,
+// bottom segment first: five green, three yellow, one red.
+const METER_THRESHOLDS = [-36, -30, -24, -18, -12, -9, -6, -3, -1];
+const METER_COLORS = ["g", "g", "g", "g", "g", "y", "y", "y", "r"];
+const PEAK_HOLD_MS = 1500;
+
+function renderLevels(base) {
+  const section = document.createElement("section");
+  const label = document.createElement("p");
+  label.className = "section-label";
+  label.textContent = "Levels";
+  section.append(label);
+
+  const card = document.createElement("div");
+  card.className = "card levels";
+  const bars = document.createElement("div");
+  bars.className = "levels-bars";
+  const channels = ["L", "R"].map((name) => {
+    const col = document.createElement("div");
+    col.className = "levels-col";
+    const stack = document.createElement("div");
+    stack.className = "levels-stack";
+    const segs = METER_THRESHOLDS.map((_, i) => {
+      const seg = document.createElement("div");
+      seg.className = `seg ${METER_COLORS[i]}`;
+      stack.append(seg);
+      return seg;
+    });
+    const caption = document.createElement("div");
+    caption.className = "label";
+    caption.textContent = name;
+    col.append(stack, caption);
+    bars.append(col);
+    return { segs, hold: -Infinity, holdAt: 0 };
+  });
+  const status = document.createElement("div");
+  status.className = "hint levels-status";
+  card.append(bars, status);
+  section.append(card);
+
+  const clear = (channel) => {
+    channel.hold = -Infinity;
+    channel.segs.forEach((seg) => seg.classList.remove("lit", "hold"));
+  };
+
+  const paint = (channel, rmsDb, peakDb, now) => {
+    let top = -1;
+    METER_THRESHOLDS.forEach((t, i) => { if (rmsDb >= t) top = i; });
+    if (peakDb >= channel.hold || now - channel.holdAt > PEAK_HOLD_MS) {
+      channel.hold = peakDb;
+      channel.holdAt = now;
+    }
+    let holdIdx = -1;
+    METER_THRESHOLDS.forEach((t, i) => { if (channel.hold >= t) holdIdx = i; });
+    channel.segs.forEach((seg, i) => {
+      seg.classList.toggle("lit", i <= top);
+      seg.classList.toggle("hold", i === holdIdx && holdIdx > top);
+    });
+  };
+
+  let busy = false;
+  const tick = async () => {
+    if (busy) return;
+    busy = true;
+    try {
+      const m = await fetchJSON(`${base}/meters`);
+      if (!m.available) {
+        channels.forEach(clear);
+        status.textContent = "Shows while this room plays through CamillaDSP";
+        return;
+      }
+      status.textContent = "";
+      const now = performance.now();
+      channels.forEach((channel, ch) => {
+        const rms = m.playback.rms[ch] ?? m.playback.rms[0];
+        const peak = m.playback.peak[ch] ?? m.playback.peak[0];
+        paint(channel, rms, peak, now);
+      });
+    } catch (e) {
+      channels.forEach(clear);
+      status.textContent = `Levels unavailable: ${e.message}`;
+    } finally {
+      busy = false;
+    }
+  };
+  tick();
+  const id = setInterval(tick, 100);
+  activePollers.push(id);
   return section;
 }
 

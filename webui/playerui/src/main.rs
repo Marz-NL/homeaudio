@@ -5,6 +5,8 @@
 // See helper/src/main.rs for what's actually allowed to happen.
 
 
+mod meters;
+
 use protocol::{JobRecipe, Request, Response, ServiceVerb};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -390,6 +392,8 @@ fn main() {
         let found = found.clone();
         std::thread::spawn(move || discover_rooms_forever(found));
     }
+    let meter_state: meters::MeterState = Default::default();
+    meters::spawn(meter_state.clone());
 
     let server = Server::http(&bind_addr).unwrap_or_else(|e| {
         eprintln!("cannot bind {bind_addr}: {e}");
@@ -428,6 +432,7 @@ fn main() {
             }
             (Method::Get, "/jobs/log") => handle_job_log(&manifest, &url),
             (Method::Get, "/guard-log") => handle_guard_log(&manifest),
+            (Method::Get, "/meters") => ok_json(meters::snapshot(&meter_state)),
 
             (Method::Options, _) => tiny_http::Response::empty(204)
                 .with_header(cors_header())

@@ -163,16 +163,15 @@
      (five green, three yellow, one red) in a fixed-width column on the right.
      Off segments are a very dark green; lit ones are dimmed on purpose. */
   .now-hero .levels {
-    flex: 0 0 44px; display: flex; gap: 5px; justify-content: flex-end;
+    flex: 0 0 44px; display: flex; flex-direction: column; gap: 6px; justify-content: center;
     --meter-off: #0d1f15; --meter-g: #2c8f5a; --meter-y: #b08d2a;
     --meter-r: #b5474c; --meter-hold: #bfeecf;
   }
-  .levels-stack { display: flex; flex-direction: column-reverse; gap: 2px; width: 7px; }
-  .seg { height: 5px; border-radius: 1px; background: var(--meter-off); }
-  .seg.g.lit { background: var(--meter-g); }
-  .seg.y.lit { background: var(--meter-y); }
-  .seg.r.lit { background: var(--meter-r); }
-  .seg.hold { box-shadow: inset 0 0 0 1px var(--meter-hold); }
+  .levels-stack { display: flex; flex-direction: row; gap: 2px; }
+  .led { width: 5px; height: 12px; border-radius: 2px; background: var(--meter-off); }
+  .led.g.lit { background: var(--meter-g); }
+  .led.y.lit { background: var(--meter-y); }
+  .led.r.lit { background: var(--meter-r); }
 
   /* Job log */
   .log-panel {
@@ -399,9 +398,9 @@ function renderNowPlaying(data, base) {
 // peak-hold marker follows the peak and lets go after a moment. Thresholds are
 // dBFS, bottom segment first: five green, three yellow, one red. One poller
 // serves whichever card is on screen, so re-rendering the card never adds one.
-const METER_THRESHOLDS = [-36, -30, -24, -18, -12, -9, -6, -3, -1];
-const METER_COLORS = ["g", "g", "g", "g", "g", "y", "y", "y", "r"];
-const PEAK_HOLD_MS = 1500;
+const METER_THRESHOLDS = [-30, -24, -18, -12, -6, -2];
+const METER_COLORS = ["g", "g", "g", "y", "y", "r"];
+const PEAK_HOLD_MS = 500;
 const meterHold = [{ hold: -Infinity, holdAt: 0 }, { hold: -Infinity, holdAt: 0 }];
 let meterBase = null;
 let meterTimer = null;
@@ -415,7 +414,7 @@ function renderMeters() {
     stack.className = "levels-stack";
     METER_THRESHOLDS.forEach((_, i) => {
       const seg = document.createElement("div");
-      seg.className = `seg ${METER_COLORS[i]}`;
+      seg.className = `led ${METER_COLORS[i]}`;
       stack.append(seg);
     });
     wrap.append(stack);
@@ -430,7 +429,7 @@ function paintMeters(wrap, levels, now) {
     const state = meterHold[ch];
     if (!levels) {
       state.hold = -Infinity;
-      segs.forEach((seg) => seg.classList.remove("lit", "hold"));
+      segs.forEach((seg) => seg.classList.remove("lit"));
       return;
     }
     const rmsDb = levels.rms[ch];
@@ -443,10 +442,8 @@ function paintMeters(wrap, levels, now) {
     }
     let holdIdx = -1;
     METER_THRESHOLDS.forEach((t, i) => { if (state.hold >= t) holdIdx = i; });
-    segs.forEach((seg, i) => {
-      seg.classList.toggle("lit", i <= top);
-      seg.classList.toggle("hold", i === holdIdx && holdIdx > top);
-    });
+    // The bar follows the RMS; the loudest LED of the last 0.5 s stays lit on its own
+    segs.forEach((seg, i) => seg.classList.toggle("lit", i <= top || i === holdIdx));
   });
 }
 

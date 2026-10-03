@@ -1,0 +1,8 @@
+# Local device backups: they hold real secrets (MA_TOKEN, spotifyd.conf)
+backups/
+
+# Per-device secrets
+**/.env
+
+# Rust build output
+target/

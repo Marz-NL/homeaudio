@@ -808,6 +808,8 @@ function pollGuardLog(base, panel) {
 // live through CamillaDSP; the first fixed rate moves the room onto it.
 const RATE_CHOICES = [["native", "No conversion"], ["44100", "44.1 kHz"], ["48000", "48 kHz"]];
 
+const RATE_INFO = "For studio setups and other interfaces that run at a fixed sample rate, such as an audio interface's S/PDIF input. Pick the rate here and every source is converted to it. Leave it on Passthrough and each track plays at its own rate.";
+
 function renderOutputCard(base, data) {
   const current = data.output.rate;
   const live = data.output.engine === "camilladsp";
@@ -845,7 +847,9 @@ function renderOutputCard(base, data) {
   const group = document.createElement("div");
   group.className = "seg";
   group.append(select);
-  panel.append(serviceRow("Sample rate", [group]), note);
+  const rateRow = serviceRow("Sample rate", [group]);
+  rateRow.querySelector(".card-name").append(infoBadge(RATE_INFO));
+  panel.append(rateRow, note);
 
   const switchTo = async (rate) => {
     group.querySelectorAll("button, select").forEach((c) => (c.disabled = true));

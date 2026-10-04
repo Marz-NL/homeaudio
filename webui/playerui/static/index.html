@@ -419,7 +419,7 @@ function renderNowPlaying(data, base) {
 // peak-hold marker follows the peak and lets go after a moment. Thresholds are
 // dBFS, bottom segment first: five green, three yellow, one red. One poller
 // serves whichever card is on screen, so re-rendering the card never adds one.
-const METER_THRESHOLDS = [-30, -24, -18, -12, -6, -2];
+const METER_THRESHOLDS = [-40, -24, -18, -12, -6, -2];
 const METER_COLORS = ["g", "g", "g", "y", "y", "r"];
 const PEAK_HOLD_MS = 500;
 const meterHold = [{ hold: -Infinity, holdAt: 0 }, { hold: -Infinity, holdAt: 0 }];

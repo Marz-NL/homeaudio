@@ -159,7 +159,9 @@ src_ma_output() {
 # hw:CARD=... names pass its startup check but fail once a stream starts.)
 ma_sendspin_device() {
   local name
-  out_cdsp && { echo "hw:CARD=Loopback,DEV=0"; return 0; }   # PortAudio takes the card-name form
+  # Through the loopback: by card number. PortAudio finds "hw:N,0" even while the
+  # device is busy, not the card-name form
+  out_cdsp && { local lb; lb=$(awk '/\[Loopback/ {print $1}' /proc/asound/cards); echo "hw:${lb:-1},0"; return 0; }
   name=$(dac_list | awk -F'|' -v c="$DAC_CARD" '$1 == c { sub(/^.* - /, "", $2); print $2 }')
   echo "${name:-$DAC_CARD}"
 }

@@ -52,6 +52,10 @@ dac_holder() {
   esac
 }
 
+# Run a command as pibuz's user without a PAM session (runuser logs every call)
+as_pibuz() {
+  setpriv --reuid="$(id -u "$PIBUZ_USER")" --regid="$(id -g "$PIBUZ_USER")" --init-groups "$@"
+}
 # Plain names for the log
 who() {
   case "$1" in
@@ -64,19 +68,22 @@ playing_line() {
   local hw="/proc/asound/card${LBCARD}/pcm0p/sub0/hw_params" rate fmt
   rate=$(sed -n 's/^rate: \([0-9]*\).*/\1/p' "$hw" 2>/dev/null)
   fmt=$(sed -n 's/^format: //p' "$hw" 2>/dev/null)
-  echo "$(who "$1") playing${rate:+ at $(awk -v r="$rate" 'BEGIN { printf "%g kHz", r / 1000 }')}${fmt:+, $fmt}"
+  local bits=""
+  case "$fmt" in S16*) bits="16-bit" ;; S24*) bits="24-bit" ;; S32*) bits="32-bit" ;; FLOAT*) bits="32-bit float" ;; esac
+  local detail=""
+  [ -n "$rate" ] && detail=$(awk -v r="$rate" 'BEGIN { printf "%g kHz", r / 1000 }')
+  [ -n "$bits" ] && detail="${detail:+$detail, }$bits"
+  echo "$(who "$1") is playing${detail:+ · $detail}"
 }
 
 # ---- polite stops
 release_ma() {
   [ -n "${MA_URL:-}" ] || return 0
-  log "asking Music Assistant to stop"
   /usr/local/bin/ma-stop
 }
 release_qobuz() {
-  log "asking Qobuz Connect to pause"
   rm -f $D/qobuz-active
-  runuser -u "$PIBUZ_USER" -- pibuz pause >/dev/null 2>&1
+  as_pibuz pibuz pause >/dev/null 2>&1
 }
 # Spotify Connect (spotifyd) is controlled over D-Bus (MPRIS, system bus)
 spotify_cmd() {
@@ -85,14 +92,12 @@ spotify_cmd() {
     /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.$1 >/dev/null 2>&1
 }
 release_spotify() {
-  log "asking Spotify to pause"
   rm -f $D/spotify-active
   spotify_cmd Pause
 }
 release_airplay() {
   [ -e $D/airplay-active ] || return 0
   rm -f $D/airplay-active
-  log "ending the AirPlay session (AirPlay has no polite stop)"
   systemctl restart shairport-sync
 }
 
@@ -146,12 +151,12 @@ db_from_pct() { awk -v p="$1" 'BEGIN { if (p <= 0) print -200; else printf "%.2f
 # The software sources' own volume, 0-100
 soft_vol_get() {
   case "$1" in
-    qobuz) runuser -u "$PIBUZ_USER" -- pibuz volume 2>/dev/null | grep -oE '[0-9]+' | head -1 ;;
+    qobuz) as_pibuz pibuz volume 2>/dev/null | grep -oE '[0-9]+' | head -1 ;;
   esac
 }
 soft_vol_set() {
   case "$1" in
-    qobuz) runuser -u "$PIBUZ_USER" -- pibuz volume "$2" >/dev/null 2>&1 ;;
+    qobuz) as_pibuz pibuz volume "$2" >/dev/null 2>&1 ;;
   esac
 }
 # Raw mixer steps, not %: the sources use different volume curves
@@ -172,7 +177,6 @@ vol_before() {
     if vol_follow && ! vol_is_soft "$2" && p=$(soft_vol_get "$1") && [ -n "$p" ]; then
       # its own volume is the shared level: put that on the mixer
       db=$(db_from_pct "$p")
-      log "volume: mixer to $db dB ($1 was at $p%) before $2 starts"
       vol_set_db "$db"
       VOL_KEEP=$(vol_get)
       [ -n "$VOL_KEEP" ] && echo "$VOL_KEEP" > $VOLDIR/hw
@@ -181,7 +185,6 @@ vol_before() {
     # the mixer is at the top for it; the shared level is the last hardware one
     VOL_KEEP=$(cat $VOLDIR/hw 2>/dev/null)
     if ! vol_is_soft "$2" && [ -n "$VOL_KEEP" ]; then
-      log "volume: mixer back to $VOL_KEEP before $2 starts"
       vol_set "$VOL_KEEP"
     fi
   else
@@ -202,10 +205,8 @@ vol_soft_top() {
     local db p
     db=$(vol_get_db)
     p=$(pct_from_db "$db")
-    log "volume: $1 to $p% (the mixer's $db dB), mixer to the top ($top)"
+    log "Volume $p%"
     soft_vol_set "$1" "$p"
-  else
-    log "volume: mixer to the top ($top) for $1, its own volume applies"
   fi
   vol_set "$top"
 }
@@ -223,7 +224,6 @@ vol_after() {
   [ -n "$want" ] || return 0
   sleep 1
   [ "$(vol_get)" = "$want" ] && return 0
-  log "volume ($VOL_MODE): mixer back to $want for $1"
   vol_set "$want"
 }
 
@@ -231,12 +231,12 @@ vol_after() {
 nudge() {
   case "$1" in
     ma)    [ -n "${MA_URL:-}" ] || return 0
-           log "Music Assistant was silent, pause + play"
+           log "Music Assistant didn't start, trying again"
            /usr/local/bin/ma-pause; sleep 0.3; /usr/local/bin/ma-play ;;
-    qobuz) log "Qobuz Connect was silent, pause + play"
-           runuser -u "$PIBUZ_USER" -- pibuz pause >/dev/null 2>&1; sleep 0.3
-           runuser -u "$PIBUZ_USER" -- pibuz play >/dev/null 2>&1 ;;
-    spotify) log "Spotify was silent, pause + play"
+    qobuz) log "Qobuz didn't start, trying again"
+           as_pibuz pibuz pause >/dev/null 2>&1; sleep 0.3
+           as_pibuz pibuz play >/dev/null 2>&1 ;;
+    spotify) log "Spotify didn't start, trying again"
              spotify_cmd Pause; sleep 0.3; spotify_cmd Play ;;
     airplay) : ;;   # its hook waits for the DAC by itself
   esac
@@ -254,7 +254,7 @@ take_dac() {
   local new=$1 holder i
   holder=$(dac_holder)
   if [ "$holder" = none ]; then log "$(who "$new") starts"
-  else log "$(who "$new") takes over from $(who "$holder")"; fi
+  else log "$(who "$new") takes over from $(who "$holder") ($(who "$holder") paused)"; fi
   [ "$holder" = "$new" ] && return      # it already plays, nothing to do
   if [ "$holder" = none ]; then vol_before "$2" "$new"; else vol_before "$holder" "$new"; fi
 
@@ -264,7 +264,7 @@ take_dac() {
     qobuz)   release_qobuz ;;
     spotify) release_spotify ;;
     airplay) release_airplay ;;
-    other)   log "WARNING: a program this guard doesn't manage holds the DAC: $(fuser -v "$PCM" 2>&1 | awk 'NR > 1 {print $NF}' | sort -u | tr '\n' ' ')" ;;
+    other)   log "Something the guard doesn't manage is using the DAC: $(fuser -v "$PCM" 2>&1 | awk 'NR > 1 {print $NF}' | sort -u | tr '\n' ' ')" ;;
   esac
   # a paused/idle source may not hold the DAC but still be "active"
   [ "$new" != airplay ] && release_airplay
@@ -279,7 +279,7 @@ take_dac() {
     sleep 0.1
   done
   if [ "$holder" != none ]; then
-    log "WARNING: $holder did not release the DAC in 6 s; leaving it alone"
+    log "$(who "$holder") didn't stop in time; leaving it alone"
     return
   fi
 
@@ -292,7 +292,7 @@ take_dac() {
   for i in $(seq 1 30); do
     holder=$(dac_holder); [ "$holder" = "$new" ] && break; sleep 0.1
   done
-  [ "$holder" = "$new" ] && log "$(playing_line "$new")" || log "WARNING: $new still silent (DAC: $holder)"
+  [ "$holder" = "$new" ] && log "$(playing_line "$new")" || log "$(who "$new") didn't start playing"
 }
 
 # Music Assistant starting a stream (only when installed)
@@ -317,7 +317,7 @@ fi
 dac_stuck() { dac_status; [[ $DAC_STATUS == *"state: PREPARED"* ]]; }
 unstick() {
   local h; h=$(dac_holder)
-  log "DAC stuck: opened by $h but not playing for 10 s"
+  log "$(who "$h") is stuck: open but silent for 10 s"
   case "$h" in
     qobuz)   release_qobuz; sleep 3
              if dac_stuck && [ "$(dac_holder)" = qobuz ]; then
@@ -362,13 +362,13 @@ last=; read -r last < $OWN
 stuck_since=
 busy_holder=
 if vol_enabled; then
-  log "started: owner '$last', volume $VOL_MODE on $VOL_CARD '$VOL_CONTROL', software sources:${VOL_SOFT% }$(vol_follow && echo ' (following the shared level)')"
+  log "Ready · current source: $(who "$last")"
   if vol_follow && vol_is_soft qobuz; then
-    curve=$(runuser -u "$PIBUZ_USER" -- pibuz settings show 2>/dev/null | awk '$1 == "audio.volume_curve" { print $3 }')
+    curve=$(as_pibuz pibuz settings show 2>/dev/null | awk '$1 == "audio.volume_curve" { print $3 }')
     [ "$curve" = linear ] || log "WARNING: pibuz volume_curve is '$curve', not linear: Qobuz will not match the shared level exactly"
   fi
 else
-  log "started: owner '$last', volume not managed (no mixer in $MANIFEST)"
+  log "Ready · current source: $(who "$last")"
 fi
 
 # First run: remember the current level for the hardware sources, unless a

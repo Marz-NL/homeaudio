@@ -38,6 +38,20 @@ if "HOMEAUDIO_MIXER" not in cli:
     open(CLI, "w").write(cli)
     print("patched:", CLI)
 
+# audio_devices.py: when the device is busy (a source is playing into the loopback),
+# sounddevice can't find it and raises ValueError, which the format probe didn't
+# catch: Music Assistant's connection then failed. A device that can't be checked
+# now is taken as the standard format (the loopback takes any).
+AUDIO = os.path.join(os.path.dirname(PATH), "audio_devices.py")
+ad = open(AUDIO).read()
+if "homeaudio: busy" not in ad:
+    anchor = "    except sounddevice.PortAudioError:\n        return False\n"
+    if ad.count(anchor) != 1:
+        sys.exit("audio_devices.py anchor not found exactly once")
+    ad = ad.replace(anchor, "    except (sounddevice.PortAudioError, ValueError):\n        # homeaudio: busy device, not listed while playing: taken as supported\n        return True\n")
+    open(AUDIO, "w").write(ad)
+    print("patched:", AUDIO)
+
 src = open(PATH).read()
 if "_perceptual_arg" in src:
     print("already perceptual:", PATH)

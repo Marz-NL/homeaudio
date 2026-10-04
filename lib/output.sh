@@ -238,9 +238,8 @@ out_set_rate() {
   if out_cdsp && [ "$rate" != direct ]; then
     conf_set OUTPUT_RATE "$rate"
     echo "$rate" | write_file "$OUT_TARGET"
-    out_write_alsa_conf       # this version's plugin, generator and ALSA device,
-                              # in case the repo was updated
-    run "$OUT_GEN" --reload
+    # meter-chain (pi/bin/meter-chain) reads the target and reloads CamillaDSP
+    # itself: no stream stops, and nothing else needs writing here
     room_manifest
     say "Output: $(out_label) (switched live)"
     return 0

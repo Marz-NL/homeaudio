@@ -1,32 +1,49 @@
 #!/bin/sh
 # homeaudio: CamillaDSP between the sources and the DAC, which also gives the
-# meters their levels. Sources play into the loopback card (hw:Loopback,0,0);
-# this follows that stream and runs CamillaDSP on the card's other end
-# (hw:Loopback,1,0), bypassed (in = out), feeding the DAC. CamillaDSP runs only
-# while something plays, so the DAC is free the rest of the time.
+# meters their levels. Sources play into the loopback card; this follows that
+# stream and runs CamillaDSP on the card's other end (hw:Loopback,1,0), feeding
+# the DAC. It owns CamillaDSP's config: the output rate (/etc/homeaudio/output-rate:
+# native, or a rate the DAC lists) is applied live with a SIGHUP reload, so the
+# music doesn't stop. CamillaDSP runs only while something plays, so the DAC is
+# free the rest of the time.
 set -u
-LB=/proc/asound/card1                 # snd-aloop, loaded by /etc/modules-load.d
+LB=/proc/asound/card$(awk '/\[Loopback/ {print $1}' /proc/asound/cards)   # snd-aloop, found by name (/etc/modules-load.d)
 RUN=/run/homeaudio-cdsp
+TARGET=/etc/homeaudio/output-rate
 PORT=5678
 DAC=$(sed -n 's/^USB_CARD=//p' /etc/homeaudio/cdsp-dac)
 mkdir -p "$RUN"
-cur=""; pid=""
+src_key=""; tgt=""; pid=""
 
 stop_cdsp() {
   [ -n "$pid" ] && kill "$pid" 2>/dev/null && wait "$pid" 2>/dev/null
-  pid=""; cur=""
+  pid=""; src_key=""
 }
 
-write_config() {   # $1 = ALSA format, $2 = rate, $3 = channels
-  # ALSA's names -> CamillaDSP's
+# $1 ALSA format, $2 source rate, $3 channels, $4 target: native or a rate
+write_config() {
   case "$1" in
     S24_3LE) fmt=S24_3_LE ;; S24_LE) fmt=S24_4_LE ;;
     FLOAT_LE) fmt=F32_LE ;; FLOAT64_LE) fmt=F64_LE ;; *) fmt=$1 ;;
   esac
-  cat > "$RUN/config.yml.new" <<CFG
+  if [ "$4" = native ] || [ "$4" = "$2" ]; then
+    out=$2; convert=
+  else
+    out=$4; convert=1      # converted; 1 dB headroom, as resampling can overshoot
+  fi
+  {
+    cat <<CFG
 devices:
-  samplerate: $2
+  samplerate: $out
   chunksize: 1024
+  capture_samplerate: $2
+CFG
+    if [ -n "$convert" ]; then cat <<CFG
+  resampler:
+    type: Synchronous
+CFG
+    fi
+    cat <<CFG
   capture:
     type: Alsa
     channels: $3
@@ -37,7 +54,26 @@ devices:
     channels: $3
     device: "hw:CARD=$DAC,DEV=0"
 CFG
+    if [ -n "$convert" ]; then cat <<CFG
+filters:
+  headroom:
+    type: Gain
+    parameters:
+      gain: -1.0
+pipeline:
+  - type: Filter
+    channels: [0, 1]
+    names: [headroom]
+CFG
+    fi
+  } > "$RUN/config.yml.new"
   mv -f "$RUN/config.yml.new" "$RUN/config.yml"
+}
+
+start_cdsp() {   # $1 format, $2 rate, $3 channels, $4 target
+  write_config "$1" "$2" "$3" "$4"
+  camilladsp -o "$RUN/camilladsp.log" -p "$PORT" -a 127.0.0.1 "$RUN/config.yml" &
+  pid=$!
 }
 
 while :; do
@@ -46,13 +82,18 @@ while :; do
     fmt=$(sed -n 's/^format: //p' "$hw")
     rate=$(sed -n 's/^rate: \([0-9]*\).*/\1/p' "$hw")
     ch=$(sed -n 's/^channels: //p' "$hw")
+    tgt=$(cat "$TARGET" 2>/dev/null || echo native)
     key="$fmt $rate $ch"
-    if [ "$key" != "$cur" ]; then
+    # CamillaDSP died while a stream plays: start it again
+    if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then pid=""; src_key=""; fi
+    if [ "$key" != "$src_key" ]; then
       stop_cdsp
-      write_config "$fmt" "$rate" "$ch"
-      camilladsp -o "$RUN/camilladsp.log" -p "$PORT" -a 127.0.0.1 "$RUN/config.yml" &
-      pid=$!
-      cur=$key
+      start_cdsp "$fmt" "$rate" "$ch" "$tgt"
+      src_key=$key; cur_tgt=$tgt
+    elif [ "$tgt" != "$cur_tgt" ] && [ -n "$pid" ]; then
+      write_config "$fmt" "$rate" "$ch" "$tgt"   # live: CamillaDSP re-reads its config
+      kill -HUP "$pid" 2>/dev/null
+      cur_tgt=$tgt
     fi
   else
     stop_cdsp

@@ -30,7 +30,7 @@
     background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
-  .shell { max-width: 1200px; margin: 0 auto; }
+  .shell { max-width: 1280px; margin: 0 auto; }
   .unreachable-note { color: var(--muted); font-size: 0.9rem; margin: 0; }
 
   /* Top bar: app heading + theme toggle */
@@ -74,11 +74,11 @@
      (much shorter content than a full now-playing card) can't shrink this
      column or shift it around. */
   .pane-left { flex: 0 0 510px; width: 510px; } /* 50% wider than the original 340px */
-  .pane-right { flex: 1 1 auto; min-width: 0; }
+  .pane-right { flex: 0 0 720px; width: 720px; min-width: 0; } /* the now-playing panel, absolute width */
   @media (max-width: 720px) {
     .pane { flex-direction: column; }
     .pane-left { flex-basis: auto; width: 100%; }
-    .pane-right { order: -1; width: 100%; }
+    .pane-right { order: -1; width: 100%; flex-basis: auto; }
   }
 
   /* Now Playing - hero size, in the right pane */

@@ -63,6 +63,18 @@
   .tab.active .pulse { background: white; }
 
   section { margin-bottom: 24px; }
+  .sources-panel { margin-top: 14px; padding: 12px; border-radius: var(--radius);
+    border: 1px solid var(--border); background: var(--bg); display: flex; flex-direction: column; gap: 10px; }
+  .card.guard-hero { border-color: var(--accent); }
+  .info-badge { position: relative; display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; margin-left: 8px; border-radius: 50%; border: 1px solid var(--muted);
+    color: var(--muted); font-size: 0.72rem; font-weight: 600; cursor: help; vertical-align: middle; }
+  .info-badge::after { content: attr(data-tip); position: absolute; left: 0; top: 24px; width: 260px; z-index: 5;
+    padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card);
+    color: var(--text); font-size: 0.8rem; font-weight: 400; line-height: 1.4; text-align: left;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); opacity: 0; pointer-events: none; transition: opacity 0.15s; }
+  .info-badge:hover::after, .info-badge:focus::after { opacity: 1; }
+  .credit { color: var(--muted); font-size: 0.75rem; text-align: center; margin: 18px 0 0; }
   .section-label {
     font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
     color: var(--muted); margin: 0 0 10px;
@@ -651,6 +663,20 @@ function connectedBadge(active, onLabel, offLabel) {
   return badge;
 }
 
+// The info badge: a circled "i" with a hover explanation.
+const GUARD_INFO = "The core of the system: it makes switching between all the inputs possible. Only one source plays at a time, and the guard hands the DAC over cleanly.";
+function infoBadge(text) {
+  const b = document.createElement("span");
+  b.className = "info-badge";
+  b.textContent = "i";
+  b.setAttribute("data-tip", text);
+  b.setAttribute("aria-label", text);
+  b.tabIndex = 0;
+  return b;
+}
+
+// Setup: Player guard on top (the always-on hero), then a Sources panel with
+// every input below it, then Output. The credit closes the column.
 function renderSetup(base, data) {
   const section = document.createElement("section");
   const label = document.createElement("p");
@@ -658,13 +684,20 @@ function renderSetup(base, data) {
   label.textContent = "Setup";
   section.append(label);
 
-  section.append(renderMusicAssistantCard(base, data));
-  if (data.output && data.output.can_set) section.append(renderOutputCard(base, data));
-
   const services = [...data.services].sort(
     (a, b) => (SERVICE_ORDER[a.id] ?? 99) - (SERVICE_ORDER[b.id] ?? 99)
   );
+  const guard = services.find((s) => s.id === "player-guard");
+  if (guard) section.append(renderPlayerGuardCard(base, guard));
+
+  const panel = document.createElement("div");
+  panel.className = "sources-panel";
+  const plabel = document.createElement("p");
+  plabel.className = "section-label";
+  plabel.textContent = "Sources";
+  panel.append(plabel, renderMusicAssistantCard(base, data));
   for (const svc of services) {
+    if (svc.id === "player-guard") continue;
     if (svc.toggleable) {
       const label = document.createElement("label");
       label.className = "switch";
@@ -675,17 +708,23 @@ function renderSetup(base, data) {
       const slider = document.createElement("span");
       slider.className = "slider";
       label.append(input, slider);
-      section.append(serviceRow(svc.name, [label]));
-    } else if (svc.id === "player-guard") {
-      section.append(renderPlayerGuardCard(base, svc));
+      panel.append(serviceRow(svc.name, [label]));
     } else {
       const badge = connectedBadge(svc.active, "Connected", "Not running");
       const lock = document.createElement("span");
       lock.className = "locked";
       lock.textContent = "always on";
-      section.append(serviceRow(svc.name, [badge, lock]));
+      panel.append(serviceRow(svc.name, [badge, lock]));
     }
   }
+  section.append(panel);
+
+  if (data.output && data.output.can_set) section.append(renderOutputCard(base, data));
+
+  const credit = document.createElement("p");
+  credit.className = "credit";
+  credit.textContent = "Created by Marz";
+  section.append(credit);
   return section;
 }
 
@@ -708,12 +747,13 @@ function renderPlayerGuardCard(base, svc) {
   // log panel needs to sit as a block beneath the row, not as a third flex
   // item squeezed into it. Same visual row, just one level deeper.
   const card = document.createElement("div");
-  card.className = "card";
+  card.className = "card guard-hero";
   const row = document.createElement("div");
   row.className = "card-row";
   const nameEl = document.createElement("div");
   nameEl.className = "card-name";
   nameEl.textContent = svc.name;
+  nameEl.append(infoBadge(GUARD_INFO));
   const right = document.createElement("div");
   right.className = "card-right";
   right.append(disclosure, badge, lock);

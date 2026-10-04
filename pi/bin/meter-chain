@@ -47,7 +47,7 @@ CFG
   capture:
     type: Alsa
     channels: $3
-    device: "hw:Loopback,1,0"
+    device: "hw:Loopback,1,$SUB"
     format: $fmt
   playback:
     type: Alsa
@@ -76,14 +76,28 @@ start_cdsp() {   # $1 format, $2 rate, $3 channels, $4 target
   pid=$!
 }
 
+# The loopback subdevice of the source that owns the DAC: qobuz 0, spotify 1,
+# airplay 2, Music Assistant 3 (the guard writes the owner). Failing that, the first
+# subdevice that is open.
+active_sub() {
+  local owner n
+  owner=$(cat /run/player-guard/audio-owner 2>/dev/null)
+  case "$owner" in qobuz) n=0 ;; spotify) n=1 ;; airplay) n=2 ;; ma) n=3 ;; *) n= ;; esac
+  if [ -n "$n" ] && grep -q '^rate:' "$LB/pcm0p/sub$n/hw_params" 2>/dev/null; then echo "$n"; return; fi
+  for n in 0 1 2 3 4 5 6 7; do
+    grep -q '^rate:' "$LB/pcm0p/sub$n/hw_params" 2>/dev/null && { echo "$n"; return; }
+  done
+}
+
 while :; do
-  hw=$LB/pcm0p/sub0/hw_params
+  SUB=$(active_sub)
+  hw=$LB/pcm0p/sub${SUB:-0}/hw_params
   if [ -r "$hw" ] && grep -q '^rate:' "$hw"; then
     fmt=$(sed -n 's/^format: //p' "$hw")
     rate=$(sed -n 's/^rate: \([0-9]*\).*/\1/p' "$hw")
     ch=$(sed -n 's/^channels: //p' "$hw")
     tgt=$(cat "$TARGET" 2>/dev/null || echo native)
-    key="$fmt $rate $ch"
+    key="$fmt $rate $ch $SUB"
     # CamillaDSP died while a stream plays: start it again
     if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then pid=""; src_key=""; fi
     if [ "$key" != "$src_key" ]; then

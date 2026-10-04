@@ -29,7 +29,8 @@ out_fixed() { [ "${OUTPUT_RATE:-native}" != native ]; }
 
 # The ALSA device the sources play on
 out_device() {
-  if out_cdsp; then echo "$OUT_PCM"; else echo "hw:CARD=$DAC_CARD,DEV=0"; fi
+  # With CamillaDSP the sources play into the loopback (raw card, see meter-chain)
+  if out_cdsp; then echo "hw:Loopback,0,0"; else echo "hw:CARD=$DAC_CARD,DEV=0"; fi
 }
 
 # In words, for messages and the web page

@@ -52,6 +52,21 @@ dac_holder() {
   esac
 }
 
+# Plain names for the log
+who() {
+  case "$1" in
+    qobuz) echo Qobuz ;; spotify) echo Spotify ;; airplay) echo AirPlay ;;
+    ma) echo "Music Assistant" ;; *) echo "$1" ;;
+  esac
+}
+# "Qobuz playing at 48 kHz, S24_3LE": the rate and format the loopback carries
+playing_line() {
+  local hw="/proc/asound/card${LBCARD}/pcm0p/sub0/hw_params" rate fmt
+  rate=$(sed -n 's/^rate: \([0-9]*\).*/\1/p' "$hw" 2>/dev/null)
+  fmt=$(sed -n 's/^format: //p' "$hw" 2>/dev/null)
+  echo "$(who "$1") playing${rate:+ at $(awk -v r="$rate" 'BEGIN { printf "%g kHz", r / 1000 }')}${fmt:+, $fmt}"
+}
+
 # ---- polite stops
 release_ma() {
   [ -n "${MA_URL:-}" ] || return 0
@@ -238,7 +253,8 @@ handover() {
 take_dac() {
   local new=$1 holder i
   holder=$(dac_holder)
-  log "new owner: $new (DAC held by: $holder)"
+  if [ "$holder" = none ]; then log "$(who "$new") starts"
+  else log "$(who "$new") takes over from $(who "$holder")"; fi
   [ "$holder" = "$new" ] && return      # it already plays, nothing to do
   if [ "$holder" = none ]; then vol_before "$2" "$new"; else vol_before "$holder" "$new"; fi
 
@@ -258,7 +274,7 @@ take_dac() {
   # 2. wait up to 6 s until the DAC is free or already taken by the newcomer
   for i in $(seq 1 60); do
     holder=$(dac_holder)
-    [ "$holder" = "$new" ] && { log "$new is playing"; return; }
+    [ "$holder" = "$new" ] && { log "$(playing_line "$new")"; return; }
     [ "$holder" = none ] && break
     sleep 0.1
   done
@@ -269,14 +285,14 @@ take_dac() {
 
   # 3. give the newcomer a moment to get the DAC by itself, then nudge
   for i in $(seq 1 8); do
-    [ "$(dac_holder)" = "$new" ] && { log "$new is playing"; return; }
+    [ "$(dac_holder)" = "$new" ] && { log "$(playing_line "$new")"; return; }
     sleep 0.1
   done
   nudge "$new"
   for i in $(seq 1 30); do
     holder=$(dac_holder); [ "$holder" = "$new" ] && break; sleep 0.1
   done
-  [ "$holder" = "$new" ] && log "$new is playing" || log "WARNING: $new still silent (DAC: $holder)"
+  [ "$holder" = "$new" ] && log "$(playing_line "$new")" || log "WARNING: $new still silent (DAC: $holder)"
 }
 
 # Music Assistant starting a stream (only when installed)
@@ -384,11 +400,11 @@ while :; do
   # from its own app). Also fires right before a handover's "new owner".
   # Which source held it is looked up once per busy period, not every tick.
   if dac_free; then
-    [ -n "$busy_holder" ] && log "$busy_holder stopped: nothing is playing"
+    [ -n "$busy_holder" ] && log "$(who "$busy_holder") stopped"
     busy_holder=
   elif [ -z "$busy_holder" ]; then
     h=$(dac_holder)
-    if [ "$h" != none ]; then busy_holder=$h; log "$h is playing"; fi
+    if [ "$h" != none ]; then busy_holder=$h; log "$(playing_line "$h")"; fi
   fi
 
   now=; read -r now < $OWN

@@ -821,38 +821,31 @@ function renderOutputCard(base, data) {
   // The DAC's name, then the rate conversion: Passthrough, or a rate the DAC lists
   panel.append(serviceRow(data.output.dac || "DAC", []));
 
-  const fixed = current !== "native";
+  // One choice: Passthrough, or one of the rates the DAC lists
   const select = document.createElement("select");
   select.className = "rate-select";
-  const placeholder = document.createElement("option");
-  placeholder.textContent = "Rate";
-  placeholder.value = "";
-  placeholder.disabled = true;
-  placeholder.selected = !fixed;
-  select.append(placeholder);
+  const pass = document.createElement("option");
+  pass.value = "native";
+  pass.textContent = "Passthrough";
+  select.append(pass);
   for (const r of data.output.rates || []) {
     const o = document.createElement("option");
     o.value = String(r);
     o.textContent = `${r / 1000} kHz`;
-    o.selected = fixed && String(r) === current;
     select.append(o);
   }
-
-  const pass = document.createElement("button");
-  pass.className = "btn" + (fixed ? "" : " primary");
-  pass.textContent = "Passthrough";
-  pass.disabled = !fixed ? true : false;
+  select.value = current;
 
   const note = document.createElement("div");
   note.className = "hint";
-  note.textContent = fixed
+  note.textContent = current !== "native"
     ? "Everything converted to one rate by CamillaDSP. Match it to your DAW session."
     : "Each track at its own rate, with no conversion.";
 
   const group = document.createElement("div");
   group.className = "seg";
-  group.append(pass, select);
-  panel.append(serviceRow("Sample rate conversion", [group]), note);
+  group.append(select);
+  panel.append(serviceRow("Sample rate", [group]), note);
 
   const switchTo = async (rate) => {
     group.querySelectorAll("button, select").forEach((c) => (c.disabled = true));
@@ -870,7 +863,6 @@ function renderOutputCard(base, data) {
     }
     followJobLine(base, note);
   };
-  pass.addEventListener("click", () => switchTo("native"));
   select.addEventListener("change", () => switchTo(select.value));
   return panel;
 }

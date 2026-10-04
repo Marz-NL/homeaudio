@@ -15,6 +15,7 @@ OUT_PCM=homeaudio                          # the ALSA device the sources play on
 OUT_CONF=/etc/alsa/conf.d/60-homeaudio.conf
 OUT_RATES="native 44100 48000 direct"
 OUT_TARGET=/etc/homeaudio/output-rate       # native | 44100 | 48000, read per stream
+OUT_RATES_FILE=/etc/homeaudio/dac-rates     # the rates the DAC takes, read while it was idle
 OUT_RUN=/run/homeaudio-cdsp                 # the stream's format and CamillaDSP's config
 OUT_GEN=/usr/local/lib/homeaudio/cdsp-config
 OUT_METER_PORT=5678                         # CamillaDSP's websocket: live peak/RMS for playerui's meters, localhost only
@@ -44,9 +45,39 @@ out_label() {
 # The rates the DAC advertises (ALSA's stream0 lists them as "Rates: ..."). Empty
 # when the card can't be read: then only 44100 and 48000 are offered.
 out_dac_rates() {
+  if [ -s "$OUT_RATES_FILE" ]; then cat "$OUT_RATES_FILE"; return; fi
   local card=${DAC_CARD:-}
   [ -n "$card" ] && [ -r "/proc/asound/$card/stream0" ] || { echo "44100 48000"; return; }
   sed -n 's/^ *Rates: *//p' "/proc/asound/$card/stream0" | tr ',' '\n' | tr -d ' ' | sort -un | paste -sd' '
+}
+
+# Read the DAC's rates while it's idle: ALSA reports a range, which is cut to the
+# standard rates inside it and saved to OUT_RATES_FILE. Needs the DAC closed.
+out_probe_rates() {
+  local card=${DAC_CARD:-} lo hi r list=""
+  [ -n "$card" ] || return 1
+  if ! grep -q closed "/proc/asound/$card/pcm0p/sub0/status" 2>/dev/null; then
+    warn "the DAC is busy, so its rates can't be read now"; return 1
+  fi
+  read -r lo hi < <(timeout 8 aplay -D "hw:CARD=$card,DEV=0" --dump-hw-params -d 0 /dev/zero 2>&1 \
+    | sed -n 's/^RATE: \[\([0-9]*\) \([0-9]*\)\].*/\1 \2/p')
+  [ -n "${lo:-}" ] && [ -n "${hi:-}" ] || { warn "couldn't read the DAC's rate range"; return 1; }
+  for r in 32000 44100 48000 88200 96000 176400 192000 352800 384000 705600 768000; do
+    [ "$r" -ge "$lo" ] && [ "$r" -le "$hi" ] && list="$list $r"
+  done
+  echo "${list# }" | write_file "$OUT_RATES_FILE"
+  info "the DAC's rates: ${list# }"
+}
+
+# The page's "read rates" and `install.sh rate probe`: stops playback on the room,
+# reads the rates, and starts the chain again
+out_reprobe_rates() {
+  say "Reading the DAC's rates: playback on this room stops"
+  run systemctl stop homeaudio-meter-chain
+  runuser -u "$AUDIO_USER" -- pibuz stop >/dev/null 2>&1 || true
+  sleep 1
+  out_probe_rates || true
+  run systemctl start homeaudio-meter-chain
 }
 
 # Install CamillaDSP and the ALSA plugin that starts it per stream, and write
@@ -229,6 +260,7 @@ GEN
 out_set_rate() {
   local rate=$1 src
   need_root rate "$rate"
+  if [ "$rate" = probe ]; then out_reprobe_rates; return; fi
   case "$rate" in
     native|direct) ;;
     *) case " $(out_dac_rates) " in *" $rate "*) ;; *) die "rate must be native, direct, or one the DAC supports: $(out_dac_rates)" ;; esac ;;

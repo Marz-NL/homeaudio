@@ -437,6 +437,7 @@ room_start() {
     run systemctl enable "$u" >/dev/null 2>&1 || true
   done
   run systemctl restart player-guard now-playing
+  out_probe_rates || true    # the DAC's rates, while it's idle
   if [ -n "${HOMEAUDIO_JOB:-}" ]; then
     # Run from playerui's "Add a source": restarting the helper now would
     # kill this very job. It re-reads the manifest after the job, in 10 s.

@@ -889,6 +889,23 @@ function renderOutputCard(base, data) {
   const group = document.createElement("div");
   group.className = "seg";
   group.append(select);
+  const readBtn = document.createElement("button");
+  readBtn.className = "btn";
+  readBtn.textContent = "Read rates";
+  readBtn.title = "Read the DAC's sample rates again";
+  readBtn.addEventListener("click", async () => {
+    if (!confirm("Reading the DAC's sample rates stops playback on this room while it's read.\n\nContinue?")) return;
+    readBtn.disabled = true;
+    note.textContent = "Reading the DAC's rates. Playback on this room has stopped; start it again when done.";
+    try {
+      await fetchJSON(`${base}/jobs/set-rate`, { method: "POST", body: JSON.stringify({ RATE: "probe" }) });
+    } catch (e) {
+      note.textContent = `Couldn't read the rates: ${e.message}`;
+    }
+    readBtn.disabled = false;
+    loadAll();
+  });
+  group.append(readBtn);
   const rateRow = serviceRow("Sample rate", [group]);
   rateRow.querySelector(".card-name").append(infoBadge(RATE_INFO));
   panel.append(rateRow, note);

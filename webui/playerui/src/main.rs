@@ -75,6 +75,13 @@ fn dac_name() -> String {
 
 // The rates a card advertises: "Rates: 44100, 48000, ..." lines in stream0
 fn dac_rates(card: &str) -> Vec<u32> {
+    // Read by the installer while the DAC was idle (install.sh, out_probe_rates)
+    if let Ok(text) = std::fs::read_to_string("/etc/homeaudio/dac-rates") {
+        let saved: Vec<u32> = text.split_whitespace().filter_map(|x| x.parse().ok()).collect();
+        if !saved.is_empty() {
+            return saved;
+        }
+    }
     if card.is_empty() {
         return Vec::new();
     }

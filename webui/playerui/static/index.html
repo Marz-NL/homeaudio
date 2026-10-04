@@ -451,12 +451,13 @@ function renderMeters() {
     });
     wrap.append(stack);
   }
-  const dpr = window.devicePixelRatio || 1;
-  const scope = document.createElement("canvas");
-  scope.className = "levels-scope";
-  scope.width = 44 * dpr;
-  scope.height = 22 * dpr;
-  wrap.append(scope);
+  // Scope disabled for now (kept, not removed): drawScope() finds no canvas and skips.
+  // const dpr = window.devicePixelRatio || 1;
+  // const scope = document.createElement("canvas");
+  // scope.className = "levels-scope";
+  // scope.width = 44 * dpr;
+  // scope.height = 22 * dpr;
+  // wrap.append(scope);
   return wrap;
 }
 

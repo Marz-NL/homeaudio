@@ -30,7 +30,7 @@
     background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
-  .shell { max-width: 960px; margin: 0 auto; }
+  .shell { max-width: 1200px; margin: 0 auto; }
   .unreachable-note { color: var(--muted); font-size: 0.9rem; margin: 0; }
 
   /* Top bar: app heading + theme toggle */
@@ -86,7 +86,10 @@
     background: var(--now-bg); color: var(--now-text); border-radius: 20px;
     padding: 24px; display: flex; align-items: center; gap: 20px; min-height: 160px;
   }
-  .now-hero.idle { color: var(--now-muted); font-size: 1rem; justify-content: center; }
+  .now-hero.idle { color: var(--now-muted); font-size: 1rem; }
+  .now-hero.idle .now-track { color: var(--now-text); font-size: 1.1rem; }
+  .now-hero .cover.idle-cover { background: rgba(255, 255, 255, 0.04); box-shadow: none;
+    color: var(--now-muted); }
   .now-hero .cover {
     width: 140px; height: 140px; border-radius: 14px; flex-shrink: 0;
     background: linear-gradient(135deg, #4a3b7a, #7a4b8f);
@@ -390,8 +393,20 @@ function renderNowPlaying(data, base) {
     card.querySelector(".now-artist").textContent = np.artist || "";
     card.querySelector(".now-source-text").textContent = np.source;
   } else {
+    // Same frame as a playing track: the cover box shows a crossed-out speaker
     card.className = "now-hero idle";
-    card.textContent = `Nothing playing (${DAC_LABEL[data.dac_owner] || data.dac_owner})`;
+    card.innerHTML = `
+      <div class="cover idle-cover">
+        <svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor"
+          stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 9.5h3.5L11 5.5v13l-4.5-4H3z"/>
+          <path d="M15 9.5l6 5M21 9.5l-6 5"/>
+        </svg>
+      </div>
+      <div class="now-text">
+        <div class="now-track">Nothing currently playing</div>
+        <div class="now-artist">Track information will appear when playing</div>
+      </div>`;
   }
   startMeters(base);
   card.append(renderMeters());

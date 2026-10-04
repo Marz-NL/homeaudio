@@ -9,7 +9,7 @@
     --bg: #f5f5f7; --card: #ffffff; --text: #1a1a1e; --muted: #6b6b73;
     --border: #e2e2e6; --accent: #3b82f6; --accent-bg: #eaf1ff;
     --danger: #d94b4b; --danger-bg: #fdeceb; --ok: #2fa86a; --ok-bg: #e8f7ef;
-    --now-bg: #101014; --now-text: #f1f1f3; --now-muted: #9d9da5;
+    --now-bg: var(--card); --now-text: var(--text); --now-muted: var(--muted);
     --radius: 16px;
   }
   @media (prefers-color-scheme: dark) {
@@ -101,8 +101,8 @@
   }
   .now-hero.idle { color: var(--now-muted); font-size: 1rem; }
   .now-hero.idle .now-track { color: var(--now-text); font-size: 1.1rem; }
-  .now-hero .cover.idle-cover { background: rgba(255, 255, 255, 0.04); box-shadow: none;
-    color: var(--now-muted); }
+  .now-hero .cover.idle-cover { background: rgba(127, 127, 135, 0.08); box-shadow: none;
+    color: var(--now-muted); opacity: 0.35; }
   .now-hero .cover {
     width: 140px; height: 140px; border-radius: 14px; flex-shrink: 0;
     background: linear-gradient(135deg, #4a3b7a, #7a4b8f);
@@ -530,7 +530,9 @@ function drawDaw(c, rmsDb, holdDb) {
     ctx.fillRect(0, dawY(holdDb, h), w, Math.max(1, h / 96));
   }
 }
+let dawLast = null;   // the last levels painted, so a fresh canvas is never blank
 function paintDaw(wrap, levels, now) {
+  dawLast = levels;
   wrap.querySelectorAll("canvas.daw-bar").forEach((c, ch) => {
     const state = meterHold[ch];
     if (!levels) {
@@ -559,6 +561,7 @@ function renderMeters() {
       bar.height = 96 * dpr;
       wrap.append(bar);
     }
+    paintDaw(wrap, dawLast, performance.now());   // painted at once: no blank frame on a rebuild
     return wrap;
   }
   for (let ch = 0; ch < 2; ch++) {

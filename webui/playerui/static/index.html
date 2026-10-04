@@ -856,7 +856,7 @@ function renderMusicAssistantCard(base, data) {
   if (ma.can_setup) {
     btn = document.createElement("button");
     btn.className = "btn";
-    btn.textContent = ma.configured ? "Reconnect" : "Set up";
+    btn.textContent = "Setup"; // also the way to pick a different server, so not "Reconnect"
     right.push(btn);
   }
   const card = serviceRow("Music Assistant", right);

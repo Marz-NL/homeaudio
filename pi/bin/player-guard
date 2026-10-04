@@ -21,14 +21,22 @@ dac_free() { dac_status; [[ $DAC_STATUS == *closed* ]]; }
 # The playback device node of the DAC, e.g. /dev/snd/pcmC0D0p
 CARDNUM=$(basename "$(readlink -f /proc/asound/$USB_CARD)" | tr -dc '0-9')
 PCM=/dev/snd/pcmC${CARDNUM}D0p
+# Sources write into the loopback and CamillaDSP holds the DAC between it and
+# them (see meter-chain), so the source is whoever writes into the loopback.
+LBCARD=$(awk '/\[Loopback/ {print $1}' /proc/asound/cards)
+LBPCM=/dev/snd/pcmC${LBCARD}D0p
 
 # Which source holds the DAC right now: ma | qobuz | spotify | airplay | none
 # Asks the kernel which process has the device open (fuser). The owner_pid in
 # the ALSA status is not reliable: it can be a thread that no longer exists.
 dac_holder() {
-  dac_free && { echo none; return; }
   local pid comm
-  pid=$(fuser "$PCM" 2>/dev/null | awk '{gsub(/[^0-9]/, "", $1); print $1}')
+  if [ -n "$LBCARD" ]; then
+    pid=$(fuser "$LBPCM" 2>/dev/null | awk '{gsub(/[^0-9]/, "", $1); print $1}')
+  else
+    dac_free && { echo none; return; }
+    pid=$(fuser "$PCM" 2>/dev/null | awk '{gsub(/[^0-9]/, "", $1); print $1}')
+  fi
   comm=$(cat /proc/$pid/comm 2>/dev/null)
   # Output rate through CamillaDSP: the plugin runs it as a child of the source
   if [ "$comm" = camilladsp ]; then
@@ -376,10 +384,11 @@ while :; do
   # from its own app). Also fires right before a handover's "new owner".
   # Which source held it is looked up once per busy period, not every tick.
   if dac_free; then
-    [ -n "$busy_holder" ] && log "$busy_holder released the DAC"
+    [ -n "$busy_holder" ] && log "$busy_holder stopped: nothing is playing"
     busy_holder=
   elif [ -z "$busy_holder" ]; then
-    busy_holder=$(dac_holder)
+    h=$(dac_holder)
+    if [ "$h" != none ]; then busy_holder=$h; log "$h is playing"; fi
   fi
 
   now=; read -r now < $OWN

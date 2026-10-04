@@ -11,7 +11,7 @@ chmod 666 $OWN
 log() {
   local t=$EPOCHREALTIME us
   us=${t#*.}
-  printf '%(%H:%M:%S)T.%s guard: %s\n' "${t%.*}" "${us:0:3}" "$*"
+  printf '%(%H:%M:%S)T.%s %s\n' "${t%.*}" "${us:0:3}" "$*"
 }
 
 # The DAC's ALSA status, read by bash itself: these checks run every second

@@ -1,0 +1,69 @@
+--- a/src/alsa_mixer.rs
++++ b/src/alsa_mixer.rs
+@@ -5,8 +5,12 @@
+ };
+ use librespot_playback::mixer::{Mixer, MixerConfig};
+ use log::error;
++use std::sync::atomic::{AtomicU16, Ordering};
+ use std::sync::{Arc, Mutex, MutexGuard};
+ 
++// The last volume set (0-65535): the dB level on the mixer has no getter in alsa 0.9
++static LAST_VOLUME: AtomicU16 = AtomicU16::new(u16::MAX);
++
+ pub fn get_available_controls() -> alsa::Result<HintIter> {
+     alsa::device_name::HintIter::new_str(None, "ctl")
+ }
+@@ -50,40 +54,28 @@
+         })?;
+         Ok(selem)
+     }
++    // Perceptual: the slider is an exponential taper in gain (25% about -30 dB,
++    // 50% about -18 dB, 75% about -9 dB, 100% 0 dB). It is set on the mixer in dB,
++    // the same level the other sources get (player-guard converts with this curve).
+     fn set_volume_with_err(&self, volume: u16) -> eyre::Result<()> {
+         let lock = self.mixer.lock().expect("lock shouldn't be poisoned");
+         let elem = self.get_selem(&lock)?;
+-        let (min, max) = elem.get_playback_volume_range();
+-
+-        let volume_steps = (max - min) as f64;
+-        let normalised_volume = if matches!(
+-            self.config.volume_ctrl,
+-            librespot_playback::config::VolumeCtrl::Linear
+-        ) {
+-            (((volume as f64) / (u16::MAX as f64)) * volume_steps) as i64 + min
++        let (min_db, max_db) = elem.get_playback_db_range();
++        let f = volume as f64 / u16::MAX as f64;
++        let db = if f <= 0.0 {
++            min_db.to_db() as f64
+         } else {
+-            ((volume as f64 + 1.0).log((u16::MAX as f64) + 1.0) * volume_steps).floor() as i64 + min
++            let gain = ((4.0 * f).exp() - 1.0) / (4.0_f64.exp() - 1.0);
++            20.0 * gain.log10()
+         };
+-
+-        elem.set_playback_volume_all(normalised_volume)?;
++        let db = db.clamp(min_db.to_db() as f64, max_db.to_db() as f64);
++        elem.set_playback_db_all(alsa::mixer::MilliBel::from_db(db as f32), alsa::Round::Floor)?;
++        LAST_VOLUME.store(volume, Ordering::Relaxed);
+         Ok(())
+     }
+ 
+     fn get_volume_with_err(&self) -> eyre::Result<u16> {
+-        let lock = self.mixer.lock().expect("lock shouldn't be poisoned");
+-        let elem = self.get_selem(&lock)?;
+-        let (min, max) = elem.get_playback_volume_range();
+-        let volume_steps = (max - min) as f64;
+-        let vol = elem.get_playback_volume(alsa::mixer::SelemChannelId::mono())?;
+-        let normalized_volume = if matches!(
+-            self.config.volume_ctrl,
+-            librespot_playback::config::VolumeCtrl::Linear
+-        ) {
+-            ((vol - min) as f64 * u16::MAX as f64 / volume_steps).floor() as u16
+-        } else {
+-            ((u16::MAX as f64 + 1.0).powf(((vol - min) as f64) / volume_steps) - 1.0).floor() as u16
+-        };
+-        Ok(normalized_volume)
++        Ok(LAST_VOLUME.load(Ordering::Relaxed))
+     }
+ }
+ 

@@ -1,7 +1,8 @@
 # Source: Spotify Connect, via spotifyd (https://github.com/Spotifyd/spotifyd,
 # GPL-3.0). The prebuilt binary from this project's releases is spotifyd
-# SPOTIFYD_VERSION with patches/spotifyd-linear-volume.patch (linear software
-# volume instead of spotifyd's hard-coded 60 dB curve); BUILD=1 builds it here.
+# SPOTIFYD_VERSION with patches/spotifyd-linear-volume.patch and
+# patches/spotifyd-perceptual-volume.patch (the DAC's mixer in dB, on the perceptual
+# curve, instead of spotifyd's hard-coded 60 dB curve); BUILD=1 builds it here.
 
 SPOTIFYD_VERSION=v0.4.2
 
@@ -123,6 +124,8 @@ spotify_build() {
   run rm -rf "$src"
   run sudo -u "$AUDIO_USER" git clone -q --depth 1 --branch "$SPOTIFYD_VERSION" https://github.com/Spotifyd/spotifyd "$src"
   run sudo -u "$AUDIO_USER" git -C "$src" apply "$HOMEAUDIO/patches/spotifyd-linear-volume.patch"
+  # Perceptual volume on the DAC's mixer, the same curve as pibuz and player-guard
+  run sudo -u "$AUDIO_USER" git -C "$src" apply "$HOMEAUDIO/patches/spotifyd-perceptual-volume.patch"
   run sudo -u "$AUDIO_USER" sh -c "cd '$src' && \$HOME/.cargo/bin/cargo build --release --locked --no-default-features --features alsa_backend,dbus_mpris"
   run systemctl stop spotifyd 2>/dev/null || true
   run install -m 755 "$src/target/release/spotifyd" /usr/local/bin/spotifyd

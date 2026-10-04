@@ -163,12 +163,12 @@
      (five green, three yellow, one red) in a fixed-width column on the right.
      Off segments are a very dark green; lit ones are dimmed on purpose. */
   .now-hero .levels {
-    flex: 0 0 44px; display: flex; flex-direction: column; gap: 6px; justify-content: center;
+    flex: 0 0 44px; display: flex; flex-direction: row; gap: 8px; justify-content: center; align-items: center;
     --meter-off: #0d1f15; --meter-g: #2c8f5a; --meter-y: #b08d2a;
     --meter-r: #b5474c; --meter-hold: #bfeecf;
   }
-  .levels-stack { display: flex; flex-direction: row; gap: 2px; }
-  .led { width: 5px; height: 12px; border-radius: 2px; background: var(--meter-off); }
+  .levels-stack { display: flex; flex-direction: column-reverse; gap: 2px; width: 14px; }
+  .led { width: 14px; height: 6px; border-radius: 2px; background: var(--meter-off); }
   .levels-scope { width: 44px; height: 22px; border-radius: 3px; color: var(--now-text);
     background: rgba(255, 255, 255, 0.04); }
   .led.g.lit { background: var(--meter-g); }

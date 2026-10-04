@@ -59,6 +59,34 @@ struct OutputStatus {
     engine: String,
     /// the manifest has a set_rate job, so the page can switch it
     can_set: bool,
+    /// the DAC's name (from /etc/homeaudio/cdsp-dac), for the Output panel
+    dac: String,
+    /// the sample rates the DAC advertises (ALSA's stream0), for the rate dropdown
+    rates: Vec<u32>,
+}
+
+// The DAC's ALSA card name, written by the installer
+fn dac_name() -> String {
+    std::fs::read_to_string("/etc/homeaudio/cdsp-dac")
+        .ok()
+        .and_then(|s| s.lines().find_map(|l| l.strip_prefix("USB_CARD=").map(|v| v.trim().to_string())))
+        .unwrap_or_default()
+}
+
+// The rates a card advertises: "Rates: 44100, 48000, ..." lines in stream0
+fn dac_rates(card: &str) -> Vec<u32> {
+    if card.is_empty() {
+        return Vec::new();
+    }
+    let text = std::fs::read_to_string(format!("/proc/asound/{card}/stream0")).unwrap_or_default();
+    let mut rates: Vec<u32> = text
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("Rates:"))
+        .flat_map(|r| r.split(',').filter_map(|x| x.trim().parse::<u32>().ok()))
+        .collect();
+    rates.sort_unstable();
+    rates.dedup();
+    rates
 }
 
 fn default_socket() -> String {
@@ -319,6 +347,8 @@ fn build_status(manifest: &Manifest, found: &FoundRooms) -> StatusResponse {
             rate: manifest.output.as_ref().map(|o| o.rate.clone()).unwrap_or_else(native),
             engine: manifest.output.as_ref().map(|o| o.engine.clone()).unwrap_or_else(direct),
             can_set: manifest.jobs.set_rate.is_some(),
+            dac: dac_name(),
+            rates: dac_rates(&dac_name()),
         },
     }
 }

@@ -65,7 +65,6 @@
   section { margin-bottom: 24px; }
   .sources-panel { margin-top: 14px; padding: 12px; border-radius: var(--radius);
     border: 1px solid var(--border); background: var(--bg); display: flex; flex-direction: column; gap: 10px; }
-  .card.guard-hero { border-color: var(--accent); }
   .info-badge { position: relative; display: inline-flex; align-items: center; justify-content: center;
     width: 18px; height: 18px; margin-left: 8px; border-radius: 50%; border: 1px solid var(--muted);
     color: var(--muted); font-size: 0.72rem; font-weight: 600; cursor: help; vertical-align: middle; }
@@ -74,6 +73,8 @@
     color: var(--text); font-size: 0.8rem; font-weight: 400; line-height: 1.4; text-align: left;
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); opacity: 0; pointer-events: none; transition: opacity 0.15s; }
   .info-badge:hover::after, .info-badge:focus::after { opacity: 1; }
+  .rate-select { font: inherit; font-size: 0.85rem; padding: 4px 10px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text); }
   .credit { color: var(--muted); font-size: 0.75rem; text-align: center; margin: 18px 0 0; }
   .section-label {
     font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
@@ -810,40 +811,68 @@ const RATE_CHOICES = [["native", "No conversion"], ["44100", "44.1 kHz"], ["4800
 function renderOutputCard(base, data) {
   const current = data.output.rate;
   const live = data.output.engine === "camilladsp";
-  const group = document.createElement("div");
-  group.className = "seg";
-  const card = serviceRow("Output", [group]);
+  const panel = document.createElement("div");
+  panel.className = "sources-panel";
+  const label = document.createElement("p");
+  label.className = "section-label";
+  label.textContent = "Output";
+  panel.append(label);
+
+  // The DAC's name, then the rate conversion: Passthrough, or a rate the DAC lists
+  panel.append(serviceRow(data.output.dac || "DAC", []));
+
+  const fixed = current !== "native";
+  const select = document.createElement("select");
+  select.className = "rate-select";
+  const placeholder = document.createElement("option");
+  placeholder.textContent = "Rate";
+  placeholder.value = "";
+  placeholder.disabled = true;
+  placeholder.selected = !fixed;
+  select.append(placeholder);
+  for (const r of data.output.rates || []) {
+    const o = document.createElement("option");
+    o.value = String(r);
+    o.textContent = `${r / 1000} kHz`;
+    o.selected = fixed && String(r) === current;
+    select.append(o);
+  }
+
+  const pass = document.createElement("button");
+  pass.className = "btn" + (fixed ? "" : " primary");
+  pass.textContent = "Passthrough";
+  pass.disabled = !fixed ? true : false;
+
   const note = document.createElement("div");
   note.className = "hint";
-  note.textContent = current === "native"
-    ? "Each track at its own rate, with no conversion."
-    : "Everything converted to one rate by CamillaDSP. Match it to your DAW session.";
-  card.append(note);
+  note.textContent = fixed
+    ? "Everything converted to one rate by CamillaDSP. Match it to your DAW session."
+    : "Each track at its own rate, with no conversion.";
 
-  for (const [rate, label] of RATE_CHOICES) {
-    const btn = document.createElement("button");
-    btn.className = "btn" + (rate === current ? " primary" : "");
-    btn.textContent = label;
-    btn.disabled = rate === current;
-    btn.addEventListener("click", async () => {
-      group.querySelectorAll("button").forEach((b) => (b.disabled = true));
-      autoRefreshSuspended = true;
-      note.textContent = live
-        ? "Switching live - the music keeps playing."
-        : "First switch: CamillaDSP is set up and every source restarts once (Qobuz and AirPlay: pick this room again). After that, switching is live.";
-      try {
-        await fetchJSON(`${base}/jobs/set-rate`, { method: "POST", body: JSON.stringify({ RATE: rate }) });
-      } catch (e) {
-        autoRefreshSuspended = maFormOpen;
-        note.textContent = `Couldn't switch: ${e.message}`;
-        group.querySelectorAll("button").forEach((b) => (b.disabled = b.classList.contains("primary")));
-        return;
-      }
-      followJobLine(base, note);
-    });
-    group.append(btn);
-  }
-  return card;
+  const group = document.createElement("div");
+  group.className = "seg";
+  group.append(pass, select);
+  panel.append(serviceRow("Sample rate conversion", [group]), note);
+
+  const switchTo = async (rate) => {
+    group.querySelectorAll("button, select").forEach((c) => (c.disabled = true));
+    autoRefreshSuspended = true;
+    note.textContent = live
+      ? "Switching live - the music keeps playing."
+      : "First switch: CamillaDSP is set up and every source restarts once (Qobuz and AirPlay: pick this room again). After that, switching is live.";
+    try {
+      await fetchJSON(`${base}/jobs/set-rate`, { method: "POST", body: JSON.stringify({ RATE: rate }) });
+    } catch (e) {
+      autoRefreshSuspended = maFormOpen;
+      note.textContent = `Couldn't switch: ${e.message}`;
+      group.querySelectorAll("button, select").forEach((c) => (c.disabled = false));
+      return;
+    }
+    followJobLine(base, note);
+  };
+  pass.addEventListener("click", () => switchTo("native"));
+  select.addEventListener("change", () => switchTo(select.value));
+  return panel;
 }
 
 function renderMusicAssistantCard(base, data) {

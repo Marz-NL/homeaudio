@@ -36,10 +36,16 @@ out_device() {
 out_label() {
   case "${OUTPUT_RATE:-native}" in
     native) echo "no conversion" ;;
-    44100)  echo "fixed 44.1 kHz" ;;
-    48000)  echo "fixed 48 kHz" ;;
-    *)      echo "${OUTPUT_RATE}" ;;
+    *)      awk -v r="${OUTPUT_RATE}" 'BEGIN { printf "fixed %g kHz", r / 1000 }' ;;
   esac
+}
+
+# The rates the DAC advertises (ALSA's stream0 lists them as "Rates: ..."). Empty
+# when the card can't be read: then only 44100 and 48000 are offered.
+out_dac_rates() {
+  local card=${DAC_CARD:-}
+  [ -n "$card" ] && [ -r "/proc/asound/$card/stream0" ] || { echo "44100 48000"; return; }
+  sed -n 's/^ *Rates: *//p' "/proc/asound/$card/stream0" | tr ',' '\n' | tr -d ' ' | sort -un | paste -sd' '
 }
 
 # Install CamillaDSP and the ALSA plugin that starts it per stream, and write
@@ -222,7 +228,10 @@ GEN
 out_set_rate() {
   local rate=$1 src
   need_root rate "$rate"
-  case " $OUT_RATES " in *" $rate "*) ;; *) die "rate must be one of: $OUT_RATES" ;; esac
+  case "$rate" in
+    native|direct) ;;
+    *) case " $(out_dac_rates) " in *" $rate "*) ;; *) die "rate must be native, direct, or one the DAC supports: $(out_dac_rates)" ;; esac ;;
+  esac
   [ -n "${DAC_CARD:-}" ] || die "no room set up yet - run: sudo ./install.sh room"
 
   # Already on CamillaDSP: live, nothing restarts

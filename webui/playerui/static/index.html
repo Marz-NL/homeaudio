@@ -141,6 +141,9 @@
   }
   .badge.ok { background: var(--ok-bg); color: var(--ok); }
   .badge.off { background: var(--border); color: var(--muted); }
+  .badge.playing { background: var(--accent-bg); color: var(--accent); }
+  .source-off .card-name { color: var(--muted); }
+  .source-hint { color: var(--muted); font-size: 0.8rem; margin: 6px 4px 0; }
   .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
   .locked { font-size: 0.78rem; color: var(--muted); padding: 2px 8px;
     border: 1px solid var(--border); border-radius: 999px; flex-shrink: 0; white-space: nowrap; }
@@ -681,6 +684,51 @@ function infoBadge(text) {
 
 // Setup: Player guard on top (the always-on hero), then a Sources panel with
 // every input below it, then Output. The credit closes the column.
+// A source's row: a live status (Playing / Ready / Off) and its enabled setting.
+// Enabled runs systemctl enable --now: the source starts now and at boot.
+// Disabled runs disable --now: it stops, and the room leaves the app.
+const SOURCE_APP = { pibuz: "Qobuz Connect", spotifyd: "Spotify Connect", "shairport-sync": "AirPlay" };
+const SOURCE_PLAYS = { pibuz: "qobuz", spotifyd: "spotify", "shairport-sync": "airplay" };
+function sourceRow(base, svc, data) {
+  const playing = data.dac_owner === SOURCE_PLAYS[svc.id];
+  const [text, cls] = !svc.enabled ? ["Off", "off"]
+    : playing ? ["Playing", "playing"]
+    : svc.active ? ["Ready", "ok"] : ["Not running", "off"];
+  const pill = document.createElement("span");
+  pill.className = `badge ${cls}`;
+  pill.textContent = text;
+
+  const label = document.createElement("label");
+  label.className = "switch";
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = svc.enabled;
+  input.addEventListener("change", () => {
+    if (!input.checked) {
+      const app = SOURCE_APP[svc.id] || svc.name;
+      let msg = `Disable ${svc.name}?\n\nThis removes this room from ${app}: it can't be chosen in the app until you enable it again.`;
+      if (playing) msg += `\n\n${svc.name} is playing now. The music stops.`;
+      if (!confirm(msg)) { input.checked = true; return; }
+    }
+    toggleService(base, svc.id, input.checked, input);
+  });
+  const slider = document.createElement("span");
+  slider.className = "slider";
+  label.append(input, slider);
+
+  const wrap = document.createElement("div");
+  const row = serviceRow(svc.name, [pill, label]);
+  if (!svc.enabled) row.classList.add("source-off");
+  wrap.append(row);
+  if (!svc.enabled) {
+    const hint = document.createElement("div");
+    hint.className = "source-hint";
+    hint.textContent = `Hidden from ${SOURCE_APP[svc.id] || svc.name} until it's enabled.`;
+    wrap.append(hint);
+  }
+  return wrap;
+}
+
 function renderSetup(base, data) {
   const section = document.createElement("section");
   const label = document.createElement("p");
@@ -703,16 +751,7 @@ function renderSetup(base, data) {
   for (const svc of services) {
     if (svc.id === "player-guard") continue;
     if (svc.toggleable) {
-      const label = document.createElement("label");
-      label.className = "switch";
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.checked = svc.enabled;
-      input.addEventListener("change", () => toggleService(base, svc.id, input.checked, input));
-      const slider = document.createElement("span");
-      slider.className = "slider";
-      label.append(input, slider);
-      panel.append(serviceRow(svc.name, [label]));
+      panel.append(sourceRow(base, svc, data));
     } else {
       const badge = connectedBadge(svc.active, "Connected", "Not running");
       const lock = document.createElement("span");

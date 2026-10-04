@@ -76,6 +76,9 @@ src_ma_install() {
     run sudo -u "$AUDIO_USER" sh -c 'command -v uv >/dev/null || [ -x "$HOME/.local/bin/uv" ] || curl -LsSf https://astral.sh/uv/install.sh | env UV_NO_MODIFY_PATH=1 INSTALLER_PRINT_QUIET=1 sh'
     run sudo -u "$AUDIO_USER" sh -c '$HOME/.local/bin/uv tool install -q sendspin 2>&1 | grep -v "is not on your PATH" || true'
   fi
+  # Perceptual volume on the DAC's mixer (pi/sendspin): applied to the installed
+  # sendspin every time, since an upgrade replaces the file
+  run python3 "$HOMEAUDIO/pi/sendspin/perceptual-volume.py" || warn "couldn't make sendspin's volume perceptual"
   ma_write_unit "$home"
   local cmd
   for cmd in stop pause play; do
@@ -116,6 +119,9 @@ ma_write_unit() {
   # On the DAC's mixer like Spotify and AirPlay: the one level they all share
   # (sendspin's own default when it finds a mixer; said explicitly here)
   [ -n "${MIXER_CONTROL:-}" ] && ! out_cdsp && hwvol=" --hardware-volume true"
+  # Through the loopback the device has no mixer: name the DAC's, for the volume
+  local envline=""
+  [ -n "${MIXER_CONTROL:-}" ] && out_cdsp && envline="Environment=\"HOMEAUDIO_MIXER=$DAC_CARD:$MIXER_CONTROL\""
   write_file /etc/systemd/system/sendspin.service <<EOF
 [Unit]
 Description=Music Assistant player ($ROOM_NAME, sendspin)
@@ -126,6 +132,7 @@ Wants=network-online.target
 Type=simple
 User=$AUDIO_USER
 SupplementaryGroups=audio
+$envline
 ExecStart=$1/.local/bin/sendspin daemon --name "$ROOM_NAME"${SENDSPIN_ID:+ --id "$SENDSPIN_ID"} --audio-device "$device"$hwvol
 Restart=on-failure
 RestartSec=10

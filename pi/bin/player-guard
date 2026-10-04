@@ -84,6 +84,10 @@ release_ma() {
 release_qobuz() {
   rm -f $D/qobuz-active
   as_pibuz pibuz pause >/dev/null 2>&1
+  # A paused stream keeps the loopback open, so the next source can't start on it
+  # (and the now-playing still names Qobuz). Stop it when it still holds the device.
+  sleep 0.5
+  if [ -n "$(fuser "$LBPCM" 2>/dev/null)" ]; then as_pibuz pibuz stop >/dev/null 2>&1; fi
 }
 # Spotify Connect (spotifyd) is controlled over D-Bus (MPRIS, system bus)
 spotify_cmd() {

@@ -494,7 +494,13 @@ function drawDaw(c, rmsDb, holdDb) {
   const ctx = c.getContext("2d");
   const w = c.width, h = c.height;
   ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = "rgba(255, 255, 255, 0.06)";
+  // The track is the LEDs' off colours, by the same position as the lit bar
+  const track = ctx.createLinearGradient(0, h, 0, 0);
+  track.addColorStop(0, "#0b2016");
+  track.addColorStop(0.75, "#0b2016");
+  track.addColorStop(0.9, "#241d0a");
+  track.addColorStop(1, "#241012");
+  ctx.fillStyle = track;
   ctx.fillRect(0, 0, w, h);
   if (rmsDb > DAW_FLOOR_DB) {
     const y = dawY(rmsDb, h);

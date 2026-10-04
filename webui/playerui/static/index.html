@@ -176,6 +176,11 @@
   .led.g { background: var(--meter-g-off); }
   .led.y { background: var(--meter-y-off); }
   .led.r { background: var(--meter-r-off); }
+  .now-hero { position: relative; }
+  .levels-preset { position: absolute; right: 12px; bottom: 10px; font: inherit; font-size: 0.66rem;
+    color: var(--now-muted); background: none; cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 999px; padding: 2px 9px; }
+  canvas.daw-bar { width: 4px; height: 96px; border-radius: 2px; }
   .levels-scope { width: 44px; height: 22px; border-radius: 3px; color: var(--now-text);
     background: rgba(255, 255, 255, 0.04); }
   .led.g.lit { background: var(--meter-g); }
@@ -363,6 +368,7 @@ function renderResumedJob(base, job) {
 }
 
 function renderNowPlaying(data, base) {
+  meterPresetDefault = data.room === "Woonkamer" ? "daw" : "90s";
   const section = document.createElement("section");
   section.className = "now-playing-section";
   const label = document.createElement("p");
@@ -410,6 +416,15 @@ function renderNowPlaying(data, base) {
   }
   startMeters(base);
   card.append(renderMeters());
+  const preset = document.createElement("button");
+  preset.className = "levels-preset";
+  preset.textContent = meterPreset() === "daw" ? "DAW" : "90s";
+  preset.title = "Meter style";
+  preset.addEventListener("click", () => {
+    setMeterPreset(meterPreset() === "daw" ? "90s" : "daw");
+    refreshNowPlayingOnly();
+  });
+  card.append(preset);
   section.append(card);
   return section;
 }
@@ -457,9 +472,76 @@ function drawScope(wrap) {
   ctx.stroke();
 }
 
+// Meter presets. "90s": the LED stacks. "DAW": one continuous bar per channel.
+// Woonkamer starts on DAW; the button on the card switches, and each browser remembers it.
+const METER_PRESET_KEY = "meterPreset";
+let meterPresetDefault = "90s";
+function meterPreset() {
+  try { return localStorage.getItem(METER_PRESET_KEY) || meterPresetDefault; } catch { return meterPresetDefault; }
+}
+function setMeterPreset(p) {
+  try { localStorage.setItem(METER_PRESET_KEY, p); } catch {}
+}
+
+// DAW: a continuous bar, RMS filled from the bottom over -60..0 dBFS. Colour is
+// by position on the bar (green, then yellow, then red), not by level.
+const DAW_FLOOR_DB = -60;
+function dawY(db, h) {
+  const f = (Math.min(0, Math.max(DAW_FLOOR_DB, db)) - DAW_FLOOR_DB) / -DAW_FLOOR_DB;
+  return h * (1 - f);
+}
+function drawDaw(c, rmsDb, holdDb) {
+  const ctx = c.getContext("2d");
+  const w = c.width, h = c.height;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.06)";
+  ctx.fillRect(0, 0, w, h);
+  if (rmsDb > DAW_FLOOR_DB) {
+    const y = dawY(rmsDb, h);
+    const grad = ctx.createLinearGradient(0, h, 0, 0);
+    grad.addColorStop(0, "#3fbf7a");
+    grad.addColorStop(0.75, "#3fbf7a");
+    grad.addColorStop(0.9, "#e3b93a");
+    grad.addColorStop(1, "#e5484d");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, y, w, h - y);
+  }
+  if (holdDb > DAW_FLOOR_DB) {
+    ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+    ctx.fillRect(0, dawY(holdDb, h), w, Math.max(1, h / 96));
+  }
+}
+function paintDaw(wrap, levels, now) {
+  wrap.querySelectorAll("canvas.daw-bar").forEach((c, ch) => {
+    const state = meterHold[ch];
+    if (!levels) {
+      state.hold = -Infinity;
+      drawDaw(c, -Infinity, -Infinity);
+      return;
+    }
+    const rmsDb = levels.rms[ch], peakDb = levels.peak[ch];
+    if (peakDb >= state.hold || now - state.holdAt > PEAK_HOLD_MS) {
+      state.hold = peakDb;
+      state.holdAt = now;
+    }
+    drawDaw(c, rmsDb, state.hold);
+  });
+}
+
 function renderMeters() {
   const wrap = document.createElement("div");
   wrap.className = "levels";
+  if (meterPreset() === "daw") {
+    const dpr = window.devicePixelRatio || 1;
+    for (let ch = 0; ch < 2; ch++) {
+      const bar = document.createElement("canvas");
+      bar.className = "daw-bar";
+      bar.width = 4 * dpr;
+      bar.height = 96 * dpr;
+      wrap.append(bar);
+    }
+    return wrap;
+  }
   for (let ch = 0; ch < 2; ch++) {
     const stack = document.createElement("div");
     stack.className = "levels-stack";
@@ -481,6 +563,7 @@ function renderMeters() {
 }
 
 function paintMeters(wrap, levels, now) {
+  if (wrap.querySelector("canvas.daw-bar")) { paintDaw(wrap, levels, now); return; }
   const stacks = wrap.querySelectorAll(".levels-stack");
   stacks.forEach((stack, ch) => {
     const segs = Array.from(stack.children);

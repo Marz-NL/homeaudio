@@ -30,6 +30,15 @@ LBPCM=/dev/snd/pcmC${LBCARD}D0p
 # Asks the kernel which process has the device open (fuser). The owner_pid in
 # the ALSA status is not reliable: it can be a thread that no longer exists.
 dac_holder() {
+  # One loopback subdevice per source: the source is the owner in the owner file,
+  # if its subdevice is open (qobuz 0, spotify 1, airplay 2, ma 3)
+  if [ -n "$LBCARD" ]; then
+    local o n
+    o=$(cat $D/audio-owner 2>/dev/null)
+    case "$o" in qobuz) n=0 ;; spotify) n=1 ;; airplay) n=2 ;; ma) n=3 ;; *) echo none; return ;; esac
+    if grep -q '^rate:' "/proc/asound/card${LBCARD}/pcm0p/sub$n/hw_params" 2>/dev/null; then echo "$o"; else echo none; fi
+    return
+  fi
   local pid comm
   if [ -n "$LBCARD" ]; then
     pid=$(fuser "$LBPCM" 2>/dev/null | awk '{gsub(/[^0-9]/, "", $1); print $1}')
@@ -263,6 +272,19 @@ handover() {
 
 take_dac() {
   local new=$1 holder i
+  if [ -n "$LBCARD" ]; then
+    # Each source has its own loopback subdevice: the newcomer doesn't wait for the old
+    # one. The others are paused or stopped, and keep their subdevices (position kept).
+    holder=${2:-none}
+    if [ "$holder" = none ] || [ "$holder" = "$new" ]; then log "$(who "$new") starts"
+    else log "$(who "$new") takes over from $(who "$holder") ($(who "$holder") paused)"; fi
+    vol_before "$2" "$new"
+    for s in qobuz spotify airplay ma; do
+      [ "$s" = "$new" ] && continue
+      case "$s" in qobuz) release_qobuz ;; spotify) release_spotify ;; airplay) release_airplay ;; ma) release_ma ;; esac
+    done
+    return
+  fi
   holder=$(dac_holder)
   if [ "$holder" = none ]; then log "$(who "$new") starts"
   else log "$(who "$new") takes over from $(who "$holder") ($(who "$holder") paused)"; fi

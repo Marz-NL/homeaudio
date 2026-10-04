@@ -76,7 +76,7 @@ qobuz_settings() {
   qobuz_set audio.device                "$(out_device)"
   qobuz_set audio.alsa_hardware_volume  false
   qobuz_set audio.normalization_enabled false
-  qobuz_set audio.volume_curve          linear   # player-guard carries the shared level over exactly
+  qobuz_set audio.volume_curve          perceptual   # an exponential taper the guard converts with (player-guard QCURVE)
   qobuz_set qconnect.device_name        "$ROOM_NAME"
   qobuz_set hooks.script                /usr/local/bin/qobuz-hook
 }

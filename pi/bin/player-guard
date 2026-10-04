@@ -113,7 +113,8 @@ release_airplay() {
 #                        software sources share the one level instead: taking over,
 #                        their own volume is set to the mixer's dB level; handing
 #                        over, the mixer gets their level. Exact only with a linear
-#                        software curve (pibuz: audio.volume_curve = linear).
+#                        curve (pibuz: audio.volume_curve, perceptual or linear); the
+#                        guard reads it at start and converts with the same curve.
 # Without mixer_card + mixer_control the guard leaves the volume alone.
 MANIFEST=${PLAYER_GUARD_MANIFEST:-/etc/player-guard-services.toml}
 VOLDIR=/var/lib/player-guard/volume
@@ -146,8 +147,18 @@ vol_get_db() {
 }
 vol_set_db() { amixer -q -D "$VOL_CARD" sset "$VOL_CONTROL" -- "${1}dB" 2>/dev/null; }
 # Linear software volume <-> dB. 1% (-40 dB) is the quietest a software source can follow.
-pct_from_db() { awk -v d="$1" 'BEGIN { p = int(100 * 10 ^ (d / 20) + 0.5); print (p < 1 ? 1 : p > 100 ? 100 : p) }'; }
-db_from_pct() { awk -v p="$1" 'BEGIN { if (p <= 0) print -200; else printf "%.2f\n", 20 * log(p / 100) / log(10) }'; }
+pct_from_db() { awk -v d="$1" -v c="$QCURVE" 'BEGIN {
+  g = 10 ^ (d / 20)
+  f = (c == "linear") ? g : log(1 + g * (exp(4) - 1)) / 4
+  p = int(100 * f + 0.5); print (p < 1 ? 1 : p > 100 ? 100 : p) }'; }
+# Qobuz's volume curve (pibuz audio.volume_curve), read at start: perceptual is an
+# exponential taper (25% about -30 dB, 50% about -18 dB, 75% about -9 dB, 100% 0 dB),
+# linear is a straight line in amplitude. The guard converts both ways with it.
+QCURVE=perceptual
+db_from_pct() { awk -v p="$1" -v c="$QCURVE" 'BEGIN {
+  f = p / 100; if (f <= 0) { print -200; exit }
+  g = (c == "linear") ? f : (exp(4 * f) - 1) / (exp(4) - 1)
+  printf "%.2f\n", 20 * log(g) / log(10) }'; }
 # The software sources' own volume, 0-100
 soft_vol_get() {
   case "$1" in
@@ -365,7 +376,10 @@ if vol_enabled; then
   log "Ready · current source: $(who "$last")"
   if vol_follow && vol_is_soft qobuz; then
     curve=$(as_pibuz pibuz settings show 2>/dev/null | awk '$1 == "audio.volume_curve" { print $3 }')
-    [ "$curve" = linear ] || log "WARNING: pibuz volume_curve is '$curve', not linear: Qobuz will not match the shared level exactly"
+    case "$curve" in
+      linear|perceptual) QCURVE=$curve ;;
+      *) log "WARNING: pibuz volume_curve is '$curve', which the guard can't convert: Qobuz volume may not match" ;;
+    esac
   fi
 else
   log "Ready · current source: $(who "$last")"

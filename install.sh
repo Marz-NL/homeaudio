@@ -51,6 +51,12 @@ done
 . "$HOMEAUDIO/lib/dac.sh"
 . "$HOMEAUDIO/lib/output.sh"
 
+# A room's setup opens with the splash, the readme of the setup (on a terminal only)
+if [[ " ${ROLES[*]} " == *" room "* ]] && [ -t 0 ] && [ -t 1 ] && [ -z "${ASSUME_YES:-}" ] && [ -z "${DRY_RUN:-}" ]; then
+  . "$HOMEAUDIO/lib/splash.sh"
+  splash_show
+fi
+
 # Everything also goes to the log, for when something needs explaining later
 # (not for doctor: that one only looks)
 if [ -z "${DRY_RUN:-}" ] && [ "$(id -u)" -eq 0 ] && [ "${ROLES[*]}" != doctor ]; then

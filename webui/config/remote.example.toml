@@ -1,8 +1,6 @@
-# playerui manifest for the central "hub" instance (webui/docker): a pure
-# remote viewer - no local audio hardware, no player-guard, no
-# player-guard-helper running alongside it, just this one binary.
-# Copy to config/hub.toml before `docker compose up`; as it is, it finds the
-# rooms by itself.
+# playerui manifest for the remote (install.sh remote): a pure remote viewer - no
+# local audio hardware, no player-guard, no player-guard-helper running alongside it,
+# just this one binary. As it is, it finds the rooms by itself.
 #
 # The trick: `rooms` lists the real per-room instances but not this one, so
 # this instance's own (empty) tab never renders - the page shows only the

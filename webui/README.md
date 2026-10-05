@@ -36,9 +36,8 @@ process can't turn into more than what the helper's own allowlists permit.
   settings. `install.sh room` writes it; a successful "Add a source" job
   appends its `[[service]]` entry itself (via `toml_edit`, keeping the rest of
   the file's formatting).
-- `config/hub.example.toml` + `docker/` - the hub: the same page on any Docker
-  host, listing every room and running nothing else (`install.sh hub` is
-  coming; see the main README for the Docker steps).
+- `config/remote.example.toml` - the remote: the same page on a machine that
+  isn't a room, as a service (`sudo ./install.sh remote`).
 
 ## Run locally
 

@@ -107,7 +107,7 @@ Qobuz is logged in from the Qobuz app, not in this setup.
   ./install.sh doctor               check what is installed and running
   sudo ./install.sh uninstall       remove it again (--purge: also answers and logins)
 
-Two other roles exist: hub (an overview page for several rooms) and heos.
+Two other roles exist: remote (the overview page for every room, as a service) and heos.
 EOF
 }
 

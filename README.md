@@ -13,8 +13,8 @@ Denon/Marantz **HEOS** speaker into Qobuz Connect too.
   keep each app's own volume.)
 - **A web page per room** (`http://<pi>.local:8189`) showing what plays, with
   switches per source and every room on one page - rooms find each other on
-  the network by themselves. Optionally a hub container
-  on a homelab with the same page.
+  the network by themselves. `sudo ./install.sh remote` runs the same page
+  on a machine that isn't a room.
 - **Bit-perfect, or one fixed rate.** Every track plays at its own rate,
   untouched. For a studio - a DAC into an audio interface locked to 44.1 or
   48 kHz - an optional sample-rate converter (CamillaDSP) switches live from
@@ -90,26 +90,6 @@ sudo ./install.sh rate 48000     # native | 44100 | 48000, live
 sudo ./install.sh rate direct    # back to sources straight on the DAC
 ```
 
-## The hub (optional)
-
-The same web page on any Docker host, listing every room - handy as one
-bookmark for the house. It works on any machine with Docker, whatever its
-processor or operating system, since the image is built on the host:
-
-```
-cd webui
-cp config/hub.example.toml config/hub.toml
-cd docker && docker compose up -d --build       # http://<host>:8189
-```
-
-It finds the rooms by itself through the host's avahi-daemon (the container
-talks to it over the mounted D-Bus socket, no host networking). A host
-without avahi: remove that mount from `docker-compose.yml` and list the rooms
-in `hub.toml`.
-
-On a Raspberry Pi running Debian-based Pi OS, `sudo ./install.sh remote` runs
-the same page as a service instead, without Docker.
-
 ## HEOS bridge (optional)
 
 Makes a HEOS speaker a Qobuz Connect device, on a homelab or on a Pi.
@@ -149,7 +129,7 @@ shows what the speaker plays, whichever app started it.
 | `install.sh`, `lib/` | the installer: `lib/room.sh`, `lib/sources/*`, `lib/output.sh` (output rate), `lib/doctor.sh` |
 | `pi/bin/` | runs on each room: `player-guard`, `now-playing`, the apps' hooks |
 | `pi/jobs/` | what playerui's "Add a source", Music Assistant and Output cards run |
-| `webui/` | playerui, player-guard-helper, the hub container ([README](webui/README.md)) |
+| `webui/` | playerui, player-guard-helper, the remote's config ([README](webui/README.md)) |
 | `heos-bridge/` | qobuz-proxy with HEOS support + heos-guard |
 | `patches/` | what the prebuilt binaries change upstream: spotifyd (linear volume), alsa_cdsp (stream restarts) |
 

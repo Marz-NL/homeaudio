@@ -8,8 +8,8 @@ note() { printf '    --    %s\n' "$*"; }
 
 doctor_main() {
   if [ -f /etc/player-guard-services.toml ]; then doctor_room; fi
-  if command -v docker >/dev/null && docker ps --format '{{.Names}}' 2>/dev/null | grep -qx playerui-hub; then
-    say "Hub"; doctor_http "overview page" "http://localhost:8189/status"
+  if systemctl is-enabled -q homeaudio-remote 2>/dev/null; then
+    say "Remote"; doctor_http "overview page" "http://localhost:8189/status"
   fi
   if systemctl cat qobuz-proxy >/dev/null 2>&1 || { command -v docker >/dev/null && docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx qobuz-proxy; }; then
     say "HEOS bridge"; doctor_http "qobuz-proxy" "http://localhost:8689/api/status"; doctor_http "heos-guard" "http://localhost:8091/api/status"

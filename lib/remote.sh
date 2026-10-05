@@ -18,8 +18,8 @@ remote_main() {
   # Built from this repo, the same code as the rooms (not the latest release)
   room_build_webui
 
-  # The same manifest as the docker hub (webui/docker): no rooms listed, the rooms are found
-  run install -D -m 644 "$HOMEAUDIO/webui/config/hub.example.toml" "$REMOTE_CONF"
+  # No rooms listed: the rooms are found on the network by themselves
+  run install -D -m 644 "$HOMEAUDIO/webui/config/remote.example.toml" "$REMOTE_CONF"
   write_file "$REMOTE_UNIT" <<'EOF'
 [Unit]
 Description=homeaudio remote: the web page for every room

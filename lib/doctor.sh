@@ -63,7 +63,7 @@ doctor_room() {
       ok "pibuz answers"
       local curve
       curve=$(runuser -u "$(sed -n 's/^PIBUZ_USER=//p' /etc/player-guard.env)" -- pibuz settings show 2>/dev/null | awk '$1 == "audio.volume_curve" {print $3}')
-      if grep -q '^software_sources_follow = true' /etc/player-guard-services.toml && [ "$curve" != linear ]; then
+      if grep -q '^software_sources_follow = true' /etc/player-guard-services.toml && [ "$curve" != perceptual ]; then
         bad "pibuz volume curve is '$curve': Qobuz won't match the other sources' volume" "sudo ./install.sh add qobuz"
       fi
     else

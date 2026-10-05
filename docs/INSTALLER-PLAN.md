@@ -4,7 +4,7 @@ One script, `install.sh`, run once per machine, choosing one or more roles:
 
 ```
 sudo ./install.sh room            # a Pi with a DAC
-./install.sh hub                  # a Docker host: playerui-hub (overview of all rooms)
+./install.sh remote               # the overview page of all rooms, as a service (no player)
 ./install.sh heos                 # HEOS bridge (qobuz-proxy + heos-guard) - on the hub or on a Pi
 ./install.sh room heos            # combined
 ./install.sh add <source>         # add a source later (also what playerui's "Add a source" runs)
@@ -43,11 +43,11 @@ sudo ./install.sh room            # a Pi with a DAC
 | AirPlay 2 | nqptp + shairport-sync (source build), conf with mixer + hooks | - |
 | Output rate (optional) | CamillaDSP (its release binary), alsa_cdsp plugin (our release, or built), ALSA device `homeaudio`, /usr/local/lib/homeaudio/cdsp-config | sample-rate converter y/n (default n); rate switched live later |
 
-## What a hub / HEOS host needs
+## What a remote / HEOS host needs
 
 | Part | Asked |
 |---|---|
-| playerui-hub | rooms (default: found via *.local) |
+| homeaudio-remote | rooms (found on the network) |
 | heos (optional) | HEOS IP, MA URL/token (optional), HA webhook (optional); Qobuz login once in qobuz-proxy's web page (:8689) |
 
 ## Phases
@@ -57,7 +57,7 @@ sudo ./install.sh room            # a Pi with a DAC
    (player-guard: no MA assumptions, sendspin recognised by name).
 3. CI: GitHub Actions builds aarch64 playerui, player-guard-helper, spotifyd (patched) into a release.
 4. Test on a clean Pi (fresh SD card), then `add` per source.
-5. `hub` and `heos` roles, tested on a homelab and on a Pi.
+5. `remote` and `heos` roles, tested on a homelab and on a Pi.
 6. README: architecture, quick start per role, credits and licenses.
 7. Publish: one fresh commit after a final private-data scan.
 

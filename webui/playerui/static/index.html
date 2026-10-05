@@ -195,7 +195,8 @@
   .now-hero { position: relative; }
   .levels-preset { position: absolute; right: 12px; bottom: 10px; font: inherit; font-size: 0.66rem;
     color: var(--now-muted); background: none; cursor: pointer;
-    border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 999px; padding: 2px 9px; }
+    border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 999px; padding: 2px 6px; }
+  .levels-stack.round .led { border-radius: 50%; }
   canvas.daw-bar { width: 4px; height: 96px; border-radius: 2px; }
   .levels-scope { width: 44px; height: 22px; border-radius: 3px; color: var(--now-text);
     background: rgba(255, 255, 255, 0.04); }
@@ -432,12 +433,18 @@ function renderNowPlaying(data, base) {
   }
   startMeters(base);
   card.append(renderMeters());
-  const preset = document.createElement("button");
+  const preset = document.createElement("select");
   preset.className = "levels-preset";
-  preset.textContent = meterPreset() === "daw" ? "DAW" : "90s";
   preset.title = "Meter style";
-  preset.addEventListener("click", () => {
-    setMeterPreset(meterPreset() === "daw" ? "90s" : "daw");
+  for (const [value, label] of [["90s", "90s"], ["round", "Rounded"], ["daw", "DAW"]]) {
+    const o = document.createElement("option");
+    o.value = value;
+    o.textContent = label;
+    o.selected = value === meterPreset();
+    preset.append(o);
+  }
+  preset.addEventListener("change", () => {
+    setMeterPreset(preset.value);
     refreshNowPlayingOnly();
   });
   card.append(preset);
@@ -569,7 +576,7 @@ function renderMeters() {
   }
   for (let ch = 0; ch < 2; ch++) {
     const stack = document.createElement("div");
-    stack.className = "levels-stack";
+    stack.className = meterPreset() === "round" ? "levels-stack round" : "levels-stack";
     METER_THRESHOLDS.forEach((_, i) => {
       const seg = document.createElement("div");
       seg.className = `led ${METER_COLORS[i]}`;

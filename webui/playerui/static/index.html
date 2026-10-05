@@ -387,7 +387,7 @@ function renderResumedJob(base, job) {
 }
 
 function renderNowPlaying(data, base) {
-  meterPresetDefault = data.room === "Woonkamer" ? "daw" : "90s";
+  if (["90s", "round", "daw"].includes(data.meter_default)) meterPresetDefault = data.meter_default;
   const section = document.createElement("section");
   section.className = "now-playing-section";
   const label = document.createElement("p");

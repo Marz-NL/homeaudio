@@ -100,9 +100,16 @@ fn default_socket() -> String {
     "/run/player-guard/helper.sock".to_string()
 }
 
+fn default_meter() -> String {
+    "90s".to_string()
+}
+
 #[derive(Debug, Deserialize, Clone)]
 struct Manifest {
     room: String,
+    /// The meter style the page shows first: "90s", "round" or "daw"
+    #[serde(default = "default_meter")]
+    meter_default: String,
     audio_owner_file: String,
     #[serde(default)]
     now_playing_file: Option<String>,
@@ -162,6 +169,7 @@ struct AvailableJob {
 #[derive(Debug, Serialize)]
 struct StatusResponse {
     room: String,
+    meter_default: String,
     dac_owner: String,
     now_playing: Option<NowPlaying>,
     music_assistant: MaStatus,
@@ -344,6 +352,7 @@ fn build_status(manifest: &Manifest, found: &FoundRooms) -> StatusResponse {
         .collect();
     StatusResponse {
         room: manifest.room.clone(),
+        meter_default: manifest.meter_default.clone(),
         dac_owner: read_dac_owner(&manifest.audio_owner_file),
         now_playing: read_now_playing(&manifest.now_playing_file),
         music_assistant: ma_status(manifest),

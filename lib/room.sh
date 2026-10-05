@@ -139,6 +139,7 @@ room_questions() {
   room_pick_mixer
 
   say "Output"
+  ask_choice METER_DEFAULT "Meter style the web page shows first" 90s 90s round daw
   # CamillaDSP always runs: it carries the meters, and the output rate. Native: the
   # music's own rate. Or convert to one rate the DAC supports (fixed-clock gear)
   conf_set WANT_CAMILLADSP y
@@ -383,6 +384,7 @@ room_manifest() {
     cat <<EOF
 # Written by install.sh - re-run it to change these (answers: $CONF).
 room = "$ROOM_NAME"
+meter_default = "${METER_DEFAULT:-90s}"
 audio_owner_file = "/run/player-guard/audio-owner"
 now_playing_file = "/run/player-guard/now-playing.json"
 helper_socket = "/run/player-guard/helper.sock"

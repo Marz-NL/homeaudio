@@ -97,6 +97,17 @@ When the setup has finished, the room shows up in each app:
   Music Assistant   the room is listed as a player
 
 Qobuz is logged in from the Qobuz app, not in this setup.
+
+
+6. COMMANDS
+
+  sudo ./install.sh room            set up a room (this screen)
+  sudo ./install.sh add <source>    add ma, qobuz, spotify or airplay later
+  sudo ./install.sh rate <rate>     native, or a rate the DAC supports; switched live
+  ./install.sh doctor               check what is installed and running
+  sudo ./install.sh uninstall       remove it again (--purge: also answers and logins)
+
+Two other roles exist: hub (an overview page for several rooms) and heos.
 EOF
 }
 
@@ -136,6 +147,17 @@ splash_show() {
   printf '\033[?25l'
   trap 'printf "\033[?25h\033[0m\n"' EXIT
   splash_header
+  printf 'Requirements\n'
+  printf '  - a Raspberry Pi running 64-bit Raspberry Pi OS, on the network\n'
+  printf '  - a DAC: a USB or HAT sound card\n'
+  printf '  - Music Assistant on the network, if the room should play from it\n\n'
+  printf 'What this setup changes on this system\n'
+  printf '  - installs and starts the room services: pibuz, spotifyd, shairport-sync,\n'
+  printf '    sendspin, player-guard, meter-chain, playerui and now-playing\n'
+  printf '  - creates the audioguard group and adds the audio users to it\n'
+  printf '  - writes its settings to /etc/homeaudio and its service files to /etc/systemd\n'
+  printf '  - loads the loopback sound card (snd-aloop) at boot\n'
+  printf '  - runs the room'"'"'s web page on port 8189\n\n'
   printf 'Read the readme first? (y/n) '
   while :; do
     IFS= read -rsn1 key

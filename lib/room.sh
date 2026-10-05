@@ -235,10 +235,10 @@ room_base() {
   say "Base packages, groups, settings"
   run apt-get update -qq
   apt_install inotify-tools curl jq alsa-utils psmisc python3 dbus ca-certificates avahi-daemon avahi-utils
-  run groupadd -f playerguard
-  run usermod -aG audio,playerguard "$AUDIO_USER"
+  run groupadd -f "$GUARD_GROUP"
+  run usermod -aG audio,$GUARD_GROUP "$AUDIO_USER"
   id playerui >/dev/null 2>&1 || run useradd --system --no-create-home --shell /usr/sbin/nologin playerui
-  run usermod -aG playerguard playerui
+  run usermod -aG "$GUARD_GROUP" playerui
   echo 'd /run/player-guard 0777 root root -' | write_file /etc/tmpfiles.d/player-guard.conf
   run systemd-tmpfiles --create /etc/tmpfiles.d/player-guard.conf
   room_env
@@ -258,7 +258,7 @@ room_env() {
     [ -n "${HA_WEBHOOK:-}" ] && echo "HA_WEBHOOK=$HA_WEBHOOK"
     true
   } | write_file "$ENV_FILE" 640
-  run chgrp playerguard "$ENV_FILE"
+  run chgrp "$GUARD_GROUP" "$ENV_FILE"
 }
 
 # ---------------------------------------------------------------- player-guard
@@ -292,6 +292,7 @@ room_webui() {
     fetch_binary "$b" "/usr/local/bin/$b" || room_build_webui
   done
   run install -m 644 "$HOMEAUDIO/webui/playerui/systemd/playerui.service" /etc/systemd/system/
+  run sed -i "s/^Group=.*/Group=$GUARD_GROUP/" /etc/systemd/system/playerui.service
   # Announce this room on the network: every room's page finds the others
   write_file /etc/avahi/services/homeaudio.service <<EOF
 <?xml version="1.0" standalone='no'?>

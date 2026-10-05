@@ -50,6 +50,9 @@ struct JobState {
 
 type SharedJob = Arc<Mutex<Option<JobState>>>;
 
+// The group that owns the guard's files: GUARD_GROUP in lib/common.sh, the same name.
+const GUARD_GROUP: &str = "playerguard";
+
 fn main() {
     let mut args = std::env::args().skip(1);
     let manifest_path = args
@@ -77,7 +80,7 @@ fn main() {
     });
     // group-readable/writable so the unprivileged playerui user (in the
     // playerguard group) can connect, unreachable by anyone else on the box.
-    let _ = Command::new("chgrp").arg("playerguard").arg(&socket_path).status();
+    let _ = Command::new("chgrp").arg(GUARD_GROUP).arg(&socket_path).status();
     let _ = Command::new("chmod").arg("660").arg(&socket_path).status();
 
     let job: SharedJob = Arc::new(Mutex::new(None));

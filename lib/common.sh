@@ -6,6 +6,10 @@ DRY_RUN=${DRY_RUN:-}
 ASSUME_YES=${ASSUME_YES:-}
 RECONFIGURE=${RECONFIGURE:-}
 
+# The group that owns the guard's files (its env file, the helper's socket). Sources and
+# the web page are members. Renamed from audioguard by lib/migrate-playerguard.sh.
+GUARD_GROUP=playerguard
+
 say()  { printf '\n==> %s\n' "$*"; }
 info() { printf '    %s\n' "$*"; }
 warn() { printf '    WARNING: %s\n' "$*" >&2; }

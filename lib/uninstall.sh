@@ -59,7 +59,7 @@ uninstall_main() {
   getent passwd playerui >/dev/null && run userdel playerui
   getent passwd shairport-sync >/dev/null && run userdel shairport-sync
   getent group shairport-sync >/dev/null && run groupdel shairport-sync
-  getent group playerguard >/dev/null && run groupdel playerguard
+  getent group "$GUARD_GROUP" >/dev/null && run groupdel "$GUARD_GROUP"
 
   if [ -n "${PURGE:-}" ]; then
     [ -n "$home" ] && uninstall_rm "$home"/.config/{pibuz,qbz,sendspin} "$home"/.cache/{pibuz,qbz}

@@ -433,9 +433,11 @@ room_start() {
   say "Starting"
   run systemctl daemon-reload
   local u
+  out_cdsp && run systemctl enable homeaudio-meter-chain >/dev/null 2>&1 || true
   for u in player-guard player-guard-helper playerui now-playing; do
     run systemctl enable "$u" >/dev/null 2>&1 || true
   done
+  out_cdsp && run systemctl restart homeaudio-meter-chain
   run systemctl restart player-guard now-playing
   out_probe_rates || true    # the DAC's rates, while it's idle
   if [ -n "${HOMEAUDIO_JOB:-}" ]; then

@@ -142,8 +142,23 @@ room_questions() {
   info "No conversion by default: every source straight on the DAC, at the music's own rate."
   info "A studio (a DAC into an audio interface at a fixed 44.1 or 48 kHz) wants a"
   info "sample-rate converter: CamillaDSP, switched live in the web page."
-  ask_yesno WANT_CAMILLADSP "Sample-rate converter (CamillaDSP)" n
-  if [ "$WANT_CAMILLADSP" = y ]; then conf_set OUTPUT_ENGINE camilladsp; else conf_set OUTPUT_ENGINE direct; conf_set OUTPUT_RATE native; fi
+  ask_yesno WANT_CAMILLADSP "Sample-rate converter (CamillaDSP): meters, and a fixed rate if you want one" n
+  if [ "$WANT_CAMILLADSP" = y ]; then
+    conf_set OUTPUT_ENGINE camilladsp
+    # Fixed-clock gear (S/PDIF into a DAC or interface) needs one rate; the rest play at the music's own rate
+    ask_yesno WANT_FIXED "Fixed sample rate (for fixed-clock gear)" "$([ "${OUTPUT_RATE:-native}" = native ] && echo n || echo y)"
+    if [ "$WANT_FIXED" = y ]; then
+      out_probe_rates || true    # the DAC idle: its rates are read now
+      info "the DAC supports: $(out_dac_rates)"
+      ask OUTPUT_RATE "Fixed rate in Hz" "${OUTPUT_RATE:-44100}"
+      case " $(out_dac_rates) " in *" $OUTPUT_RATE "*) ;; *) warn "$OUTPUT_RATE Hz is not in the DAC's list: check it in the web page" ;; esac
+      conf_set OUTPUT_RATE "$OUTPUT_RATE"
+    else
+      conf_set OUTPUT_RATE native
+    fi
+  else
+    conf_set OUTPUT_ENGINE direct; conf_set OUTPUT_RATE native
+  fi
 
   say "Sources - which apps can play in this room?"
   ask_yesno WANT_QOBUZ   "Qobuz Connect (Qobuz app)" y

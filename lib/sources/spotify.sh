@@ -80,7 +80,7 @@ control = \"$MIXER_CONTROL\""
 device_name = "$ROOM_NAME"
 device_type = "speaker"
 backend = "alsa"
-device = "$(out_device)"
+device = "$(out_device spotify)"
 audio_format = "$format"
 bitrate = 320
 $volume

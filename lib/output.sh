@@ -28,10 +28,18 @@ ALSA_CDSP_SO=/usr/lib/$(uname -m)-linux-gnu/alsa-lib/libasound_module_pcm_cdsp.s
 out_cdsp()  { [ "${OUTPUT_ENGINE:-camilladsp}" = camilladsp ]; }
 out_fixed() { [ "${OUTPUT_RATE:-native}" != native ]; }
 
-# The ALSA device the sources play on
+# The ALSA device a source plays on: qobuz (default), spotify, airplay. With
+# CamillaDSP each has its own loopback subdevice; the owner file (see
+# player-guard and meter-chain) says which one the chain follows.
 out_device() {
+  local sub
+  case "${1:-qobuz}" in
+    spotify) sub=1 ;;
+    airplay) sub=2 ;;
+    *)       sub=0 ;;
+  esac
   # With CamillaDSP the sources play into the loopback (raw card, see meter-chain)
-  if out_cdsp; then echo "hw:Loopback,0,0"; else echo "hw:CARD=$DAC_CARD,DEV=0"; fi
+  if out_cdsp; then echo "hw:Loopback,0,$sub"; else echo "hw:CARD=$DAC_CARD,DEV=0"; fi
 }
 
 # In words, for messages and the web page
@@ -82,12 +90,40 @@ out_reprobe_rates() {
 
 # Install CamillaDSP and the ALSA plugin that starts it per stream, and write
 # the "homeaudio" device (camilladsp), or remove it all from ALSA (direct)
+# The loopback card (snd-aloop, 8 subdevices) that the sources write into, and
+# the one name Music Assistant's sendspin uses for its subdevice (3): PortAudio
+# lists it through the hint, which it can't do for hw:N,0,3
+out_write_loopback_alias() {
+  local conf=$1
+  echo snd-aloop | write_file /etc/modules-load.d/homeaudio-loopback.conf
+  grep -q '^snd_aloop' /proc/modules 2>/dev/null || run modprobe snd-aloop
+  write_file "$conf" <<'EOF'
+# homeaudio: one loopback subdevice per source (snd-aloop has 8). The chain follows
+# whichever source the guard says owns the DAC (/run/player-guard/audio-owner).
+# Music Assistant's sendspin reaches its subdevice by this name (PortAudio lists it
+# through the hint, which it can't do for hw:N,0,3).
+pcm.loopback_ma {
+    type hw
+    card Loopback
+    device 0
+    subdevice 3
+    hint {
+        show on
+        description "homeaudio: Music Assistant (loopback)"
+    }
+}
+EOF
+}
+
 out_write_alsa_conf() {
+  local lb_conf=/etc/alsa/conf.d/60-homeaudio-loopback.conf
   if ! out_cdsp; then
     [ -e "$OUT_CONF" ] && run rm -f "$OUT_CONF"
+    [ -e "$lb_conf" ] && run rm -f "$lb_conf"
     return 0
   fi
   out_install_camilladsp
+  out_write_loopback_alias "$lb_conf"
   run mkdir -p "$(dirname "$OUT_TARGET")"
   echo "${OUTPUT_RATE:-native}" | write_file "$OUT_TARGET"
   run chmod 644 "$OUT_TARGET"

@@ -24,7 +24,7 @@ airplay_write_conf() {
   [ -n "${MIXER_CONTROL:-}" ] && mixer=" mixer_control_name = \"$MIXER_CONTROL\"; mixer_device = \"hw:CARD=$DAC_CARD\";"
   write_file /etc/shairport-sync.conf <<EOF
 general = { name = "$ROOM_NAME"; output_backend = "alsa"; mpris_service_bus = "system"; };
-alsa = { output_device = "$(out_device)"; disable_standby_mode = "never";$mixer };
+alsa = { output_device = "$(out_device airplay)"; disable_standby_mode = "never";$mixer };
 metadata = {
     enabled = "yes";
     include_cover_art = "yes";

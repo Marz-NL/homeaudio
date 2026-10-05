@@ -40,9 +40,12 @@ cd /opt/homeaudio
 sudo ./install.sh room
 ```
 
-The installer finds your DAC and its volume control, asks which apps you
-want (Qobuz, Spotify, AirPlay 2, Music Assistant) and a few names, and sets
-everything up. A HAT that isn't enabled yet: it offers to enable it and asks
+The installer opens with a short screen: what it changes on the system, and
+the option to read the full readme first. Then it finds your DAC and its
+volume control, asks which apps you want (Qobuz, Spotify, AirPlay 2, Music
+Assistant), the output rate and the meter style, and a few names, and sets
+everything up. Run it with no role and it asks whether this machine is a room
+or a remote. A HAT that isn't enabled yet: it offers to enable it and asks
 for a reboot - then run the same command again.
 
 Afterwards:
@@ -72,16 +75,13 @@ later, use "Set up" on the web page's Music Assistant card (or
 
 ### Output rate (studio)
 
-By default every source plays straight on the DAC at the music's own rate
-(bit-perfect). If the DAC feeds something that runs at a fixed clock - an
-audio interface's S/PDIF input while your DAW session is at 44.1 or 48 kHz -
-answer yes to "Sample-rate converter" during `install.sh room`, or just pick
-44.1 or 48 kHz on the web page's Output card later.
-
-The sources then play into [CamillaDSP](https://github.com/HEnquist/camilladsp),
-which feeds the DAC: at the track's own rate (Bit-perfect, passed through
-untouched) or converted to the rate you picked (with 1 dB of headroom, since
-resampling can overshoot near full scale). Switching between those is live:
+Every room runs [CamillaDSP](https://github.com/HEnquist/camilladsp) between
+the sources and the DAC. During `install.sh room` you pick the output rate:
+native (the track's own rate, passed through untouched - the default), or one
+rate the DAC supports, for a DAC that feeds something with a fixed clock, such
+as an audio interface's S/PDIF input while your DAW session is at 44.1 or 48
+kHz. A converted rate has 1 dB of headroom, since resampling can overshoot
+near full scale. You can change it later on the web page's Output card. Switching between those is live:
 the music keeps playing, no app loses its connection. Only moving a room onto
 CamillaDSP the first time restarts the sources once.
 
@@ -89,6 +89,14 @@ CamillaDSP the first time restarts the sources once.
 sudo ./install.sh rate 48000     # native | 44100 | 48000, live
 sudo ./install.sh rate direct    # back to sources straight on the DAC
 ```
+
+## Remote (optional)
+
+The web page for every room, on a machine that isn't a room - a Pi with no
+DAC, or any always-on Debian box. `sudo ./install.sh remote` installs
+playerui as a service on port 8189, with no sound card and no player. The
+rooms are found on the network by themselves (avahi). A room and a remote
+can't share a machine, since both use port 8189.
 
 ## HEOS bridge (optional)
 
@@ -116,7 +124,7 @@ shows what the speaker plays, whichever app started it.
  phone apps ──► Qobuz Connect (pibuz) ─┐
             ──► Spotify Connect (spotifyd) ─┤
             ──► AirPlay 2 (shairport-sync) ─┼──► [CamillaDSP] ──► DAC ──► amplifier
- Music Assistant ──► sendspin ──────────────┘    (optional: fixed rate)
+ Music Assistant ──► sendspin ──────────────┘    (native, or converted to a fixed rate)
                          │
           player-guard: who has the DAC, pauses the others, volume
                          │
@@ -126,12 +134,12 @@ shows what the speaker plays, whichever app started it.
 
 | Directory | What |
 |---|---|
-| `install.sh`, `lib/` | the installer: `lib/room.sh`, `lib/sources/*`, `lib/output.sh` (output rate), `lib/doctor.sh` |
+| `install.sh`, `lib/` | the installer: `lib/room.sh` (a room), `lib/remote.sh` (a remote), `lib/sources/*`, `lib/output.sh` (output rate), `lib/doctor.sh`, `lib/splash.sh` (the first screen), `lib/migrate-playerguard.sh` (for rooms set up before the group was renamed) |
 | `pi/bin/` | runs on each room: `player-guard`, `now-playing`, the apps' hooks |
 | `pi/jobs/` | what playerui's "Add a source", Music Assistant and Output cards run |
 | `webui/` | playerui, player-guard-helper, the remote's config ([README](webui/README.md)) |
 | `heos-bridge/` | qobuz-proxy with HEOS support + heos-guard |
-| `patches/` | what the prebuilt binaries change upstream: spotifyd (linear volume), alsa_cdsp (stream restarts) |
+| `patches/` | what the binaries change upstream: spotifyd (linear and perceptual volume), alsa_cdsp (stream restarts) |
 
 ## Security
 

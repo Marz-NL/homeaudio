@@ -78,6 +78,7 @@ qobuz_settings() {
   qobuz_set audio.normalization_enabled false
   qobuz_set audio.volume_curve          perceptual   # an exponential taper the guard converts with (player-guard QCURVE)
   qobuz_set qconnect.device_name        "$ROOM_NAME"
+  qobuz_set qconnect.startup_mode       on        # the room is in the Qobuz app from boot
   qobuz_set hooks.script                /usr/local/bin/qobuz-hook
 }
 

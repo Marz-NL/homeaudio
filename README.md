@@ -93,7 +93,8 @@ sudo ./install.sh rate direct    # back to sources straight on the DAC
 ## The hub (optional)
 
 The same web page on any Docker host, listing every room - handy as one
-bookmark for the house. `install.sh hub` is coming; for now:
+bookmark for the house. It works on any machine with Docker, whatever its
+processor or operating system, since the image is built on the host:
 
 ```
 cd webui
@@ -105,6 +106,9 @@ It finds the rooms by itself through the host's avahi-daemon (the container
 talks to it over the mounted D-Bus socket, no host networking). A host
 without avahi: remove that mount from `docker-compose.yml` and list the rooms
 in `hub.toml`.
+
+On a Raspberry Pi running Debian-based Pi OS, `sudo ./install.sh remote` runs
+the same page as a service instead, without Docker.
 
 ## HEOS bridge (optional)
 

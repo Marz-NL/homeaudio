@@ -3,7 +3,7 @@
 # Only on a terminal: install.sh shows it before anything is logged or changed.
 
 SPLASH_W=72
-SPLASH_ITEMS=("How the sound flows" "The programs used" "The fixed way" "Options to come" "Start the setup")
+SPLASH_ITEMS=("How the sound flows" "The programs used" "The fixed way" "Options to come" "Pairing: the fun part" "Start the setup")
 
 # A box of the given lines (stdin), with a title. Plain ASCII, so the edges line up.
 splash_box() {
@@ -73,6 +73,18 @@ Most of them can later be changed on the room's web page, without
 running the installer again: open http://<room>.local:8189
 
 The signal path stays fixed.
+EOF
+      ;;
+    4) splash_box "Pairing: the fun part" <<'EOF'
+This is the moment the room comes alive. Once the setup has finished,
+the room is ready to be found by the apps you already use:
+
+  Qobuz app       pick the room from the device list, and play
+  Spotify         the room is in the Connect list, one tap away
+  AirPlay         the room is in the list of speakers, one tap away
+  Music Assistant the room shows up as a player, ready to go
+
+Every room is a new voice in your home, so have fun with it.
 EOF
       ;;
   esac

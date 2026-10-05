@@ -39,9 +39,28 @@ def dac_playing():
     except OSError:
         return False
 
+def loopback_card():
+    try:
+        for line in open("/proc/asound/cards"):
+            if "[Loopback" in line:
+                return line.split()[0]
+    except OSError:
+        pass
+    return None
+
 def dac_holder():
+    # One loopback subdevice per source: the owner in the owner file, if its subdevice is open
+    lb = loopback_card() if "loopback_card" in globals() else None
+    if lb:
+        owner = open(OWNER).read().strip() if os.path.exists(OWNER) else ""
+        n = {"qobuz": 0, "spotify": 1, "airplay": 2, "ma": 3}.get(owner)
+        if n is not None and "rate:" in open(f"/proc/asound/card{lb}/pcm0p/sub{n}/hw_params").read() if os.path.exists(f"/proc/asound/card{lb}/pcm0p/sub{n}/hw_params") else False:
+            return owner
+        return None
     """Which source has the DAC open, by process name (same rule as the guard)."""
-    card = os.path.basename(os.path.realpath(f"/proc/asound/{CARD}")).replace("card", "")
+    # The sources write into the loopback (see meter-chain): that's where to look.
+    # Fall back to the DAC for a room without the loopback.
+    card = loopback_card() or os.path.basename(os.path.realpath(f"/proc/asound/{CARD}")).replace("card", "")
     pids = sh("fuser", f"/dev/snd/pcmC{card}D0p").split()
     for pid in pids:
         pid = "".join(c for c in pid if c.isdigit())

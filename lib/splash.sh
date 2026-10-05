@@ -1,45 +1,54 @@
-# The splash: the first screen of a room setup, and its readme. Up and down (or j and k)
-# move the highlight, Enter opens a page, any key goes back from a page, q quits.
-# Only on a terminal: install.sh shows it before anything is logged or changed.
+# The splash: the first screen of the installer. It names the repo, asks whether to read
+# the readme first, and shows the readme as a scrollable page. Only on a terminal:
+# install.sh shows it before anything is logged or changed.
+#
+# Keys: y or n answer the question. In the readme: j or down, k or up, space or PgDn,
+# b or PgUp scroll; g goes to the top; q leaves the readme and starts the setup.
 
-SPLASH_W=72
-SPLASH_ITEMS=("How the sound flows" "The programs used" "The fixed way" "Options to come" "Pairing" "Start the setup")
+SPLASH_TITLE="homeaudio  Installer"
 
-# A box of the given lines (stdin), with a title. Plain ASCII, so the edges line up.
-splash_box() {
-  local title=$1 line rule
-  rule=$(printf '%*s' $((SPLASH_W + 2)) '' | tr ' ' '-')
-  printf '+%s+\n' "$rule"
-  printf '| %-*s |\n' "$SPLASH_W" "$title"
-  printf '+%s+\n' "$rule"
-  while IFS= read -r line; do printf '| %-*s |\n' "$SPLASH_W" "$line"; done
-  printf '+%s+\n' "$rule"
+splash_header() {
+  printf '\033[H\033[2J'
+  printf '\033[1m%s\033[0m\n' "$SPLASH_TITLE"
+  printf '%s\n\n' "$(printf '%*s' ${#SPLASH_TITLE} '' | tr ' ' '=')"
 }
 
-splash_page() {
-  case $1 in
-    0) splash_box "How the sound flows" <<'EOF'
-Every source plays into the same loopback card, one subdevice each:
+# The readme: plain text, one line per row
+splash_readme() {
+  cat <<'EOF'
+WHAT THIS INSTALLER SETS UP
 
-  Qobuz app ---> pibuz         (Qobuz Connect)        subdevice 0
-  Spotify  ---> spotifyd       (Spotify Connect)      subdevice 1
-  AirPlay  ---> shairport-sync (AirPlay 2)            subdevice 2
-  Music Assistant -> sendspin  (Music Assistant)      subdevice 3
+A room: a Raspberry Pi with a DAC (a sound card), playing music from the
+Qobuz app, Spotify, AirPlay and Music Assistant, with a web page for the room.
 
-      +--------------------------------------------------------+
-      | player-guard: one source plays, the others pause        |
-      +--------------------------------------------------------+
-                               |  the playing source's subdevice
-                               v
-      +--------------------------------------------------------+
-      | meter-chain + CamillaDSP: capture, output rate, meters  |
-      +--------------------------------------------------------+
-                               |  native, or the rate you choose
-                               v
-                       DAC  (the room's sound card)
-EOF
-      ;;
-    1) splash_box "The programs used" <<'EOF'
+
+1. HOW THE SOUND FLOWS
+
+  Qobuz app ---> pibuz          (Qobuz Connect)        subdevice 0
+  Spotify  ---> spotifyd        (Spotify Connect)      subdevice 1
+  AirPlay  ---> shairport-sync  (AirPlay 2)            subdevice 2
+  Music Assistant -> sendspin   (Music Assistant)      subdevice 3
+          |
+          |   all four write into one loopback card (snd-aloop)
+          v
+  +-----------------------------------------------------------+
+  | player-guard: one source plays, the others pause          |
+  +-----------------------------------------------------------+
+          |   the playing source's subdevice
+          v
+  +-----------------------------------------------------------+
+  | meter-chain + CamillaDSP: capture, output rate, meters    |
+  +-----------------------------------------------------------+
+          |   native, or the rate you chose
+          v
+  DAC (the room's sound card)
+
+  The web page (playerui, port 8189) reads the levels from CamillaDSP and
+  shows them as meters.
+
+
+2. PROGRAMS USED
+
   pibuz 2.6.0          Qobuz Connect, headless (the Qobuz app)
   spotifyd 0.4.2       Spotify Connect, with a perceptual volume patch
   shairport-sync       AirPlay 2 (with nqptp for timing)
@@ -50,80 +59,91 @@ EOF
   playerui             the room's web page (port 8189)
   now-playing          track and cover art (port 8190)
   avahi                announces the room on the network
-EOF
-      ;;
-    2) splash_box "The fixed way" <<'EOF'
-This is the fixed way of setting up a room. Every room gets the
-same path, so a fault is always looked for in the same place:
 
-  - every source plays into the same loopback card
+
+3. FIXED SETTINGS
+
+These are the same in every room, on purpose, so a fault is always looked for
+in the same place:
+
+  - every source plays into the same loopback card, one subdevice each
   - CamillaDSP is always in the path: it carries the meters
   - one source at a time takes the DAC; the others pause
-  - the output is native (the music's own rate), or one rate you choose
+  - the path itself is not up for choice
 
-The path itself is not up for choice. Only the settings on top of
-it are.
-EOF
-      ;;
-    3) splash_box "Options to come" <<'EOF'
-The next steps add options to this setup: which sources a room has,
-how the DAC and its volume are named, and the output rate.
 
-Most of them can later be changed on the room's web page, without
-running the installer again: open http://<room>.local:8189
+4. VARIABLE SETTINGS
 
-The signal path stays fixed.
-EOF
-      ;;
-    4) splash_box "Pairing" <<'EOF'
+You choose these during the setup:
+
+  - the room name (it is the name the apps show)
+  - the DAC, and which control is its volume
+  - which sources the room has: Qobuz, Spotify, AirPlay, Music Assistant
+  - Music Assistant: its address and the player for this room
+  - the output rate: native (the music's own rate), or one rate the DAC supports
+  - an optional Home Assistant webhook for the now-playing information
+
+Most of these can be changed later on the room's web page, without running
+the installer again: open http://<room>.local:8189
+
+
+5. PAIRING
+
 When the setup has finished, the room shows up in each app:
+
   Qobuz app         choose the room in the device list
   Spotify           the room is listed under Connect devices
   AirPlay           the room is listed as a speaker
   Music Assistant   the room is listed as a player
+
 Qobuz is logged in from the Qobuz app, not in this setup.
 EOF
-      ;;
-  esac
 }
 
-# The menu, with the highlighted item in reverse video
-splash_menu() {
-  local sel=$1 i label
-  printf '\033[H\033[2J'
-  splash_box "homeaudio - room setup" <<EOF
-Up and down (or j, k) move. Enter opens. q quits.
-
-EOF
-  for i in "${!SPLASH_ITEMS[@]}"; do
-    label=${SPLASH_ITEMS[$i]}
-    if [ "$i" -eq "$sel" ]; then printf '\033[7m  > %-*s\033[0m\n' "$SPLASH_W" "$label"
-    else printf '    %-*s\n' "$SPLASH_W" "$label"; fi
-  done
-}
-
-# Shows the splash until the setup is started. Returns then; q exits the installer.
-splash_show() {
-  local sel=0 key seq n=${#SPLASH_ITEMS[@]}
-  printf '\033[?25l'
-  trap 'printf "\033[?25h\033[0m\n"' EXIT
+# Shows the readme, scrollable. Returns when q is pressed.
+splash_readme_show() {
+  local -a R
+  local top=0 key seq rows h
+  mapfile -t R < <(splash_readme)
   while :; do
-    splash_menu "$sel"
+    rows=$(tput lines 2>/dev/null || echo 24)
+    h=$(( rows - 4 )); [ "$h" -lt 5 ] && h=5
+    [ $top -gt $(( ${#R[@]} - h )) ] && top=$(( ${#R[@]} - h ))
+    [ $top -lt 0 ] && top=0
+    splash_header
+    printf '%s\n' "${R[@]:top:h}"
+    printf '\n\033[7m  j/k scroll   space page   g top   q start the setup  (%d%%)  \033[0m' \
+      $(( (top + h) * 100 / ${#R[@]} ))
     IFS= read -rsn1 key
     case $key in
-      $'\e') IFS= read -rsn2 -t 0.1 seq; case $seq in '[A') key=k ;; '[B') key=j ;; *) key=esc ;; esac ;;
+      $'\e') IFS= read -rsn2 -t 0.1 seq; case $seq in '[A') key=k ;; '[B') key=j ;; '[5') key=b ;; '[6') key=' ' ;; *) key= ;; esac ;;
     esac
     case $key in
-      k) sel=$(( (sel + n - 1) % n )) ;;
-      j) sel=$(( (sel + 1) % n )) ;;
-      q) exit 0 ;;
-      esc) ;;
-      '')
-        if [ "$sel" -eq $((n - 1)) ]; then printf '\033[?25h\033[0m\n'; trap - EXIT; return 0; fi
-        printf '\033[H\033[2J'; splash_page "$sel"
-        printf '\n  any key goes back\n'
-        IFS= read -rsn1 _
-        ;;
+      j) top=$(( top + 1 )) ;;
+      k) top=$(( top - 1 )) ;;
+      ' ') top=$(( top + h - 2 )) ;;
+      b) top=$(( top - h + 2 )) ;;
+      g) top=0 ;;
+      q) return 0 ;;
+    esac
+    [ $top -lt 0 ] && top=0
+  done
+}
+
+# Shown first: the readme question. Returns when the setup should start.
+splash_show() {
+  local key
+  printf '\033[?25l'
+  trap 'printf "\033[?25h\033[0m\n"' EXIT
+  splash_header
+  printf 'Read the readme first? (y/n) '
+  while :; do
+    IFS= read -rsn1 key
+    case $key in
+      y|Y) splash_readme_show; break ;;
+      n|N|'') break ;;
     esac
   done
+  printf '\033[?25h\033[0m\n'
+  trap - EXIT
 }

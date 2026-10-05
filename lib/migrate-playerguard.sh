@@ -28,6 +28,14 @@ fi
 echo "members: $(getent group playerguard | cut -d: -f4)"
 echo "env file group: $(stat -c %G /etc/player-guard.env 2>/dev/null || echo none)"
 
-# Services that read the group at start pick it up on restart
-systemctl restart player-guard-helper playerui shairport-sync 2>/dev/null || true
+# playerui runs as this group: its unit names it, so the unit follows the rename
+if grep -q '^Group=audioguard' /etc/systemd/system/playerui.service 2>/dev/null; then
+  sed -i 's/^Group=audioguard/Group=playerguard/' /etc/systemd/system/playerui.service
+  systemctl daemon-reload
+  echo "playerui unit: Group=playerguard"
+fi
+
+# The helper and the web page read the group when they start. The sources keep
+# their membership (it was renamed with the group), so they're not restarted.
+systemctl restart player-guard-helper playerui
 echo "done: $(systemctl is-active player-guard-helper) helper, $(systemctl is-active playerui) playerui"

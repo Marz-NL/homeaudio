@@ -32,6 +32,8 @@ Wants=network-online.target
 [Service]
 User=$AUDIO_USER
 SupplementaryGroups=audio
+# The audio writer asks for realtime priority; without this limit it stays at normal
+LimitRTPRIO=50
 ExecStart=/usr/local/bin/pibuz run
 Restart=on-failure
 RestartSec=5

@@ -5,7 +5,7 @@
 
 . "$HOMEAUDIO/lib/room.sh"   # the paths (ENV_FILE, MANIFEST)
 
-UNINSTALL_UNITS="player-guard player-guard-helper playerui now-playing sendspin pibuz spotifyd shairport-sync nqptp"
+UNINSTALL_UNITS="player-guard player-guard-helper playerui now-playing sendspin pibuz spotifyd shairport-sync nqptp homeaudio-remote"
 
 uninstall_main() {
   need_root uninstall
@@ -37,7 +37,7 @@ uninstall_main() {
 
   say "Removing"
   # our units, and the ones shairport-sync's and nqptp's `make install` put
-  uninstall_rm /etc/systemd/system/{player-guard,player-guard-helper,playerui,now-playing,sendspin,pibuz,spotifyd}.service \
+  uninstall_rm /etc/systemd/system/{player-guard,player-guard-helper,playerui,now-playing,sendspin,pibuz,spotifyd,homeaudio-remote}.service \
                /usr/lib/systemd/system/{shairport-sync,nqptp}.service /lib/systemd/system/{shairport-sync,nqptp}.service
   run systemctl daemon-reload
   # programs

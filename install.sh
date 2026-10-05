@@ -5,7 +5,7 @@
 #   sudo ./install.sh add <source>     add a source to a room later: ma | qobuz | spotify | airplay
 #   sudo ./install.sh rate <rate>      output: native (no conversion) | 44100 | 48000 (CamillaDSP,
 #                                      switched live) | direct (no CamillaDSP, the default)
-#   ./install.sh hub                   a Docker host: one overview page for every room
+#   sudo ./install.sh remote          the web page for every room, as a service: no player, no sound card
 #   sudo ./install.sh heos             bridge a HEOS speaker to Qobuz Connect (Pi or homelab)
 #   ./install.sh doctor                check what is installed and running
 #   sudo ./install.sh uninstall        remove it all again (--purge: also answers and app logins)
@@ -38,13 +38,25 @@ while [ $# -gt 0 ]; do
     --no-docker)   NO_DOCKER=1 ;;
     --purge)       export PURGE=1 ;;
     -h|--help)     usage ;;
-    room|hub|heos|doctor|uninstall) ROLES+=("$1") ;;
+    room|remote|heos|doctor|uninstall) ROLES+=("$1") ;;
     add)           shift; [ $# -gt 0 ] || usage 1; ADD+=("$1") ;;
     rate)          shift; [ $# -gt 0 ] || usage 1; RATE=$1 ;;
     *)             echo "Unknown: $1"; usage 1 ;;
   esac
   shift
 done
+# No role given: ask what this machine is
+if [ ${#ROLES[@]} -eq 0 ] && [ ${#ADD[@]} -eq 0 ] && [ -z "$RATE" ] && [ -t 0 ]; then
+  echo "What is this machine?"
+  echo "  1) a player room: a Pi with a DAC, playing from the apps"
+  echo "  2) remote: the web page for every room, no sound card"
+  read -rp "choose 1 or 2: " choice
+  case $choice in
+    1) ROLES=(room) ;;
+    2) ROLES=(remote) ;;
+    *) usage 1 ;;
+  esac
+fi
 [ ${#ROLES[@]} -gt 0 ] || [ ${#ADD[@]} -gt 0 ] || [ -n "$RATE" ] || usage 1
 
 . "$HOMEAUDIO/lib/common.sh"

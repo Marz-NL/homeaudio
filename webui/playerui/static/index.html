@@ -693,7 +693,8 @@ function infoBadge(text) {
 
 // Setup: Player guard on top (the always-on hero), then a Sources panel with
 // every input below it, then Output. The credit closes the column.
-// A source's row: a live status (Playing / Ready / Off) and its enabled setting.
+// A source's row: a live status (Has the DAC / Ready / Off) and its enabled setting.
+// "Has the DAC" means it holds the DAC, which can be paused.
 // Enabled runs systemctl enable --now: the source starts now and at boot.
 // Disabled runs disable --now: it stops, and the room leaves the app.
 const SOURCE_APP = { pibuz: "Qobuz Connect", spotifyd: "Spotify Connect", "shairport-sync": "AirPlay" };
@@ -701,7 +702,7 @@ const SOURCE_PLAYS = { pibuz: "qobuz", spotifyd: "spotify", "shairport-sync": "a
 function sourceRow(base, svc, data) {
   const playing = data.dac_owner === SOURCE_PLAYS[svc.id];
   const [text, cls] = !svc.enabled ? ["Off", "off"]
-    : playing ? ["Playing", "playing"]
+    : playing ? ["Has the DAC", "playing"]
     : svc.active ? ["Ready", "ok"] : ["Not running", "off"];
   const pill = document.createElement("span");
   pill.className = `badge ${cls}`;

@@ -15,7 +15,8 @@ remote_main() {
 
   apt_install avahi-daemon avahi-utils curl
   id playerui >/dev/null 2>&1 || run useradd --system --no-create-home --shell /usr/sbin/nologin playerui
-  fetch_binary playerui /usr/local/bin/playerui || room_build_webui
+  # Built from this repo, the same code as the rooms (not the latest release)
+  room_build_webui
 
   # The same manifest as the docker hub (webui/docker): no rooms listed, the rooms are found
   run install -D -m 644 "$HOMEAUDIO/webui/config/hub.example.toml" "$REMOTE_CONF"

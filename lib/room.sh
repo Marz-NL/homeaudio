@@ -87,7 +87,7 @@ room_adopt() {
   conf_set WANT_MA "$(unit sendspin)"
   v=$(systemctl cat sendspin 2>/dev/null | sed -n 's/^ExecStart=.* --id \([^ ]*\).*/\1/p' | tr -d '"')
   [ -n "$v" ] && conf_set SENDSPIN_ID "$v"
-  [ -n "${WANT_CAMILLADSP:-}" ] || { conf_set WANT_CAMILLADSP n; conf_set OUTPUT_ENGINE direct; conf_set OUTPUT_RATE native; }
+  conf_set WANT_CAMILLADSP y; conf_set OUTPUT_ENGINE camilladsp   # always: the converter is part of every room
   # A drop-in that sets ExecStart would keep overriding the units written
   # below: move it aside (its settings are taken over above)
   local u d
@@ -139,26 +139,13 @@ room_questions() {
   room_pick_mixer
 
   say "Output"
-  info "No conversion by default: every source straight on the DAC, at the music's own rate."
-  info "A studio (a DAC into an audio interface at a fixed 44.1 or 48 kHz) wants a"
-  info "sample-rate converter: CamillaDSP, switched live in the web page."
-  ask_yesno WANT_CAMILLADSP "Sample-rate converter (CamillaDSP): meters, and a fixed rate if you want one" n
-  if [ "$WANT_CAMILLADSP" = y ]; then
-    conf_set OUTPUT_ENGINE camilladsp
-    # Fixed-clock gear (S/PDIF into a DAC or interface) needs one rate; the rest play at the music's own rate
-    ask_yesno WANT_FIXED "Fixed sample rate (for fixed-clock gear)" "$([ "${OUTPUT_RATE:-native}" = native ] && echo n || echo y)"
-    if [ "$WANT_FIXED" = y ]; then
-      out_probe_rates || true    # the DAC idle: its rates are read now
-      info "the DAC supports: $(out_dac_rates)"
-      ask OUTPUT_RATE "Fixed rate in Hz" "${OUTPUT_RATE:-44100}"
-      case " $(out_dac_rates) " in *" $OUTPUT_RATE "*) ;; *) warn "$OUTPUT_RATE Hz is not in the DAC's list: check it in the web page" ;; esac
-      conf_set OUTPUT_RATE "$OUTPUT_RATE"
-    else
-      conf_set OUTPUT_RATE native
-    fi
-  else
-    conf_set OUTPUT_ENGINE direct; conf_set OUTPUT_RATE native
-  fi
+  # CamillaDSP always runs: it carries the meters, and the output rate. Native: the
+  # music's own rate. Or convert to one rate the DAC supports (fixed-clock gear)
+  conf_set WANT_CAMILLADSP y
+  conf_set OUTPUT_ENGINE camilladsp
+  out_probe_rates || true    # the DAC idle: its rates are read now
+  ask_choice OUTPUT_RATE "Output rate: native, or convert to (number, Hz)" native native $(out_dac_rates)
+  case " native $(out_dac_rates) " in *" ${OUTPUT_RATE:-native} "*) ;; *) warn "$OUTPUT_RATE is not a rate the DAC lists: native is used"; conf_set OUTPUT_RATE native ;; esac
 
   say "Sources - which apps can play in this room?"
   ask_yesno WANT_QOBUZ   "Qobuz Connect (Qobuz app)" y

@@ -154,7 +154,7 @@ splash_show() {
   printf 'What this setup changes on this system\n'
   printf '  - installs and starts the room services: pibuz, spotifyd, shairport-sync,\n'
   printf '    sendspin, player-guard, meter-chain, playerui and now-playing\n'
-  printf '  - creates the audioguard group and adds the audio users to it\n'
+  printf '  - creates the playerguard group and adds the audio users to it\n'
   printf '  - writes its settings to /etc/homeaudio and its service files to /etc/systemd\n'
   printf '  - loads the loopback sound card (snd-aloop) at boot\n'
   printf '  - runs the room'"'"'s web page on port 8189\n\n'

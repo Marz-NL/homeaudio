@@ -12,7 +12,7 @@ src_airplay_install() {
   fi
 
   # airplay-start/-stop (run by shairport-sync) read /etc/player-guard.env
-  run usermod -aG audioguard shairport-sync
+  run usermod -aG playerguard shairport-sync
   airplay_write_conf
   run systemctl enable nqptp shairport-sync >/dev/null 2>&1
   run systemctl restart nqptp shairport-sync

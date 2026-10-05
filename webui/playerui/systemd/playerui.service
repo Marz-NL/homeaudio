@@ -4,7 +4,7 @@ After=network-online.target player-guard-helper.service
 
 [Service]
 User=playerui
-Group=audioguard
+Group=playerguard
 # Read-only access to player-guard's own journal, for the "guard log" panel.
 SupplementaryGroups=systemd-journal
 ExecStart=/usr/local/bin/playerui /etc/player-guard-services.toml 0.0.0.0:8189

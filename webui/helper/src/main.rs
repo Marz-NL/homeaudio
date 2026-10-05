@@ -76,8 +76,8 @@ fn main() {
         std::process::exit(1);
     });
     // group-readable/writable so the unprivileged playerui user (in the
-    // audioguard group) can connect, unreachable by anyone else on the box.
-    let _ = Command::new("chgrp").arg("audioguard").arg(&socket_path).status();
+    // playerguard group) can connect, unreachable by anyone else on the box.
+    let _ = Command::new("chgrp").arg("playerguard").arg(&socket_path).status();
     let _ = Command::new("chmod").arg("660").arg(&socket_path).status();
 
     let job: SharedJob = Arc::new(Mutex::new(None));

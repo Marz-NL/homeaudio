@@ -25,13 +25,13 @@ sudo ./install.sh room            # a Pi with a DAC
   shairport-sync + nqptp are built from source (no upstream aarch64 builds).
 - Answers are stored in /etc/homeaudio/install.conf: a re-run asks nothing and
   updates. Idempotent; --dry-run shows the plan without changing anything.
-- Secrets only in /etc/player-guard.env (0640 root:audioguard), never in the repo.
+- Secrets only in /etc/player-guard.env (0640 root:playerguard), never in the repo.
 
 ## What a room needs
 
 | Part | Installed | Asked / detected |
 |---|---|---|
-| Base | audio user in `audio` + `audioguard`, /run/player-guard, inotify-tools, curl, jq | room name, audio user |
+| Base | audio user in `audio` + `playerguard`, /run/player-guard, inotify-tools, curl, jq | room name, audio user |
 | DAC | - | card (/proc/asound/cards), mixer control (amixer scontrols), sample format |
 | player-guard | guard, hooks, unit | - |
 | playerui + helper | binaries, units, /etc/player-guard-services.toml | other rooms' URLs (default: *.local) |

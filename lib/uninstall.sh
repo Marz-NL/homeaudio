@@ -54,12 +54,12 @@ uninstall_main() {
                /etc/spotifyd.conf /etc/shairport-sync.conf /etc/shairport-sync.conf.sample \
                /etc/dbus-1/system.d/{spotifyd,shairport-sync-mpris,shairport-sync-dbus}.conf \
                /run/player-guard /run/homeaudio-cdsp
-  # users and groups made for it (the audio user stays; leaving audioguard
+  # users and groups made for it (the audio user stays; leaving playerguard
   # happens with the group)
   getent passwd playerui >/dev/null && run userdel playerui
   getent passwd shairport-sync >/dev/null && run userdel shairport-sync
   getent group shairport-sync >/dev/null && run groupdel shairport-sync
-  getent group audioguard >/dev/null && run groupdel audioguard
+  getent group playerguard >/dev/null && run groupdel playerguard
 
   if [ -n "${PURGE:-}" ]; then
     [ -n "$home" ] && uninstall_rm "$home"/.config/{pibuz,qbz,sendspin} "$home"/.cache/{pibuz,qbz}

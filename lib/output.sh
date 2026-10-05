@@ -127,6 +127,7 @@ out_write_alsa_conf() {
   # The chain: CamillaDSP from the loopback to the DAC, with the meters (see meter-chain)
   run install -D -m 755 "$HOMEAUDIO/pi/bin/meter-chain" /usr/local/lib/homeaudio/meter-chain
   run install -m 644 "$HOMEAUDIO/pi/systemd/homeaudio-meter-chain.service" /etc/systemd/system/homeaudio-meter-chain.service
+  run sed -i "s/^User=.*/User=$AUDIO_USER/" /etc/systemd/system/homeaudio-meter-chain.service
   run mkdir -p "$(dirname "$OUT_TARGET")"
   echo "${OUTPUT_RATE:-native}" | write_file "$OUT_TARGET"
   run chmod 644 "$OUT_TARGET"

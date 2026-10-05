@@ -19,3 +19,10 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+Bundled third-party programs keep their own licenses. spotifyd (GPL-3.0) and
+CamillaDSP (GPL-3.0) are separate programs that homeaudio installs and runs;
+homeaudio's MIT license does not extend to them, and their own terms apply to
+them. The other projects and their licenses are listed in THIRD-PARTY.md.
